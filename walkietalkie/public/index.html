@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#14131f" />
+    <title>워키타키</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-view="setup">
+    <main class="app-shell">
+      <section class="view setup-view" id="setupView">
+        <div class="setup-stack">
+          <article class="stack-card hero-card">
+            <p class="eyebrow">WalkieTalkie</p>
+            <h1>워키타키</h1>
+            <p class="hero-copy">
+              둘만 쓰는 영상·음성 통화. 앱 설치 없이 같은 개인 링크 하나만 저장해두면
+              브라우저에서 바로 연결됩니다.
+            </p>
+            <div class="mini-pills">
+              <span class="mini-pill">모바일 우선</span>
+              <span class="mini-pill">거의 0원 운영</span>
+              <span class="mini-pill">둘만 접속</span>
+            </div>
+          </article>
+
+          <article class="stack-card action-card">
+            <div class="card-head">
+              <div>
+                <p class="card-kicker">개인 통화 카드</p>
+                <h2>같은 링크로 계속 쓰기</h2>
+              </div>
+              <label class="toggle-pill">
+                <input id="audioOnly" type="checkbox" />
+                <span>이번엔 음성만</span>
+              </label>
+            </div>
+
+            <label class="field">
+              <span>내 이름</span>
+              <input
+                id="displayName"
+                type="text"
+                maxlength="24"
+                autocomplete="nickname"
+                placeholder="예: Minwoo"
+              />
+            </label>
+
+            <label class="field">
+              <span>개인 링크</span>
+              <textarea id="inviteLink" rows="3" readonly></textarea>
+            </label>
+
+            <p class="invite-hint" id="inviteHint">
+              같은 링크를 둘 다 저장해두면 다음부터 바로 통화할 수 있습니다.
+            </p>
+
+            <div class="setup-actions">
+              <button id="regenerateLinkBtn" class="secondary-btn">새 링크</button>
+              <button id="copyInviteBtn" class="secondary-btn">링크 복사</button>
+              <button id="joinBtn" class="primary-btn">통화 시작</button>
+            </div>
+
+            <p class="setup-status" id="setupStatusText">
+              서버는 연결만 붙여주고 영상·음성은 브라우저끼리 직접 주고받습니다.
+            </p>
+          </article>
+
+          <article class="stack-card tips-card">
+            <div class="tip-row">
+              <strong>01</strong>
+              <p>Workers 무료 플랜 기준으로 고정 서버비 없이 계속 쓰기 쉽게 설계했습니다.</p>
+            </div>
+            <div class="tip-row">
+              <strong>02</strong>
+              <p>통화 시작을 누르면 실제 통화 화면으로 전환되고, 상대방이 같은 링크로 들어오면 바로 연결됩니다.</p>
+            </div>
+            <div class="tip-row">
+              <strong>03</strong>
+              <p>연결이 안 되는 일부 네트워크에서는 나중에 TURN만 추가하면 됩니다.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view call-view hidden" id="callView" aria-hidden="true">
+        <div class="call-stage">
+          <video id="remoteVideo" class="call-video hidden" playsinline autoplay></video>
+          <div class="stage-placeholder" id="remotePlaceholder">
+            <strong>상대방을 기다리는 중</strong>
+            <span>같은 링크로 들어오면 바로 영상·음성 연결을 시작합니다.</span>
+          </div>
+
+          <div class="call-topbar">
+            <span class="call-chip brand-chip">워키타키</span>
+            <span class="call-chip" id="peerBadge">대기 중</span>
+          </div>
+
+          <div class="call-copy">
+            <strong id="callTitle">상대방을 기다리는 중</strong>
+            <p class="status-line" id="statusText">
+              같은 링크를 저장한 뒤 두 사람이 동시에 들어오면 자동으로 연결됩니다.
+            </p>
+          </div>
+
+          <aside class="local-pip">
+            <video id="localVideo" class="call-video hidden" playsinline autoplay muted></video>
+            <div class="pip-placeholder" id="localPlaceholder">
+              <strong>카메라 준비 전</strong>
+              <span>권한을 허용하면 여기에서 내 화면을 볼 수 있습니다.</span>
+            </div>
+            <span class="pip-badge" id="localBadge">나</span>
+          </aside>
+
+          <div class="control-dock">
+            <button id="toggleMicBtn" class="icon-button" type="button" disabled aria-label="마이크">
+              <span class="emoji" id="toggleMicEmoji" aria-hidden="true">🎙️</span>
+              <span class="icon-text" id="toggleMicText">마이크</span>
+            </button>
+            <button id="toggleCameraBtn" class="icon-button" type="button" disabled aria-label="카메라">
+              <span class="emoji" id="toggleCameraEmoji" aria-hidden="true">📹</span>
+              <span class="icon-text" id="toggleCameraText">카메라</span>
+            </button>
+            <button
+              id="leaveBtn"
+              class="icon-button end-button"
+              type="button"
+              disabled
+              aria-label="통화 종료"
+            >
+              <span class="emoji" aria-hidden="true">📞</span>
+              <span class="icon-text">종료</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

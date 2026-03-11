@@ -24,7 +24,7 @@ export default {
 
       const roomId = roomMatch[1]
       const stub = env.ROOMS.get(env.ROOMS.idFromName(roomId))
-      const internalUrl = new URL("https://paircall.internal/ws")
+      const internalUrl = new URL("https://walkietalkie.internal/ws")
       internalUrl.search = url.search
 
       return stub.fetch(new Request(internalUrl, request))

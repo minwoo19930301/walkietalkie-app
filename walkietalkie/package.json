@@ -1,5 +1,5 @@
 {
-  "name": "paircall",
+  "name": "walkietalkie",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,4 +11,3 @@
     "wrangler": "^4.72.0"
   }
 }
-

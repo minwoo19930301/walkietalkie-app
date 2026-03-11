@@ -376,6 +376,11 @@ button:disabled {
   gap: 12px;
 }
 
+.call-topbar,
+.pip-badge {
+  display: none;
+}
+
 .call-chip {
   color: #fff8f4;
   background: rgba(255, 255, 255, 0.12);
@@ -472,8 +477,11 @@ button:disabled {
 }
 
 .hangup-icon {
+  inline-size: 32px;
+  block-size: 32px;
   fill: currentColor;
   stroke: none;
+  filter: none;
 }
 
 .waiting-modal-backdrop {

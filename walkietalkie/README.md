@@ -1,12 +1,13 @@
-# 워키타키
+# 워키토키
 
 둘만 쓰는 링크 기반 영상·음성 통화 앱입니다. 설치형 앱 대신 웹으로 만들고, 서버는 연결만 붙여주는 최소 역할만 맡겨서 유지비를 거의 0원에 가깝게 맞추는 방향으로 구성했습니다.
 
 ## 링크
 
 - GitHub 저장소: [https://github.com/minwoo19930301/walkietalkie-app](https://github.com/minwoo19930301/walkietalkie-app)
-- 현재 배포 주소: [https://walkietalkie.rlaalsdn456456.workers.dev/](https://walkietalkie.rlaalsdn456456.workers.dev/)
-- 이전 배포 주소: [https://paircall.rlaalsdn456456.workers.dev/](https://paircall.rlaalsdn456456.workers.dev/)
+- Live 주소: [https://walkietalkie.kmw4564.workers.dev/](https://walkietalkie.kmw4564.workers.dev/)
+- 이전 계정 주소: [https://walkietalkie.rlaalsdn456456.workers.dev/](https://walkietalkie.rlaalsdn456456.workers.dev/)
+- 초기 paircall 주소: [https://paircall.rlaalsdn456456.workers.dev/](https://paircall.rlaalsdn456456.workers.dev/)
 
 ## 왜 웹 기반이 맞는가
 
@@ -79,7 +80,7 @@ npm run deploy
 - 한 번 배포
 - 첫 접속 시 생성된 개인 링크를 두 사람만 저장
 - 이후엔 항상 그 링크로 접속
-- 필요할 때만 `통화 시작`
+- 필요할 때만 링크 열기
 
 ## 다음 단계
 

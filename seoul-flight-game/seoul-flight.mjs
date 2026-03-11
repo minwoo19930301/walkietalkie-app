@@ -1148,7 +1148,7 @@ function resetFlight() {
   state.yaw = Math.atan2(firstCheckpoint.x - startX, -(firstCheckpoint.z - startZ));
   state.pitch = -0.18;
   state.roll = 0;
-  state.speed = 45;
+  state.speed = 68;
   state.elapsedMs = 0;
   state.startedAt = 0;
   state.checkpointIndex = 0;
@@ -1199,7 +1199,7 @@ function updateFlight(delta) {
   const bankInput = Number(input.bankRight) - Number(input.bankLeft);
   const yawInput = Number(input.yawRight) - Number(input.yawLeft);
 
-  const targetSpeed = input.boost ? 77 : 49;
+  const targetSpeed = input.boost ? 116 : 74;
   state.speed = THREE.MathUtils.damp(state.speed, targetSpeed, 2.1, delta);
 
   const pitchSpeed = input.level ? 0.16 : 0.82;

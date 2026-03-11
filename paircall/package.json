@@ -1,0 +1,14 @@
+{
+  "name": "paircall",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "node --check src/index.js && node --check public/app.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.72.0"
+  }
+}
+

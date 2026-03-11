@@ -179,18 +179,24 @@ function buildInviteUrl(invite) {
 
 function renderInvite() {
   const inviteUrl = buildInviteUrl(state.invite)
-  elements.inviteLink.value = inviteUrl
+  elements.inviteLink.textContent = inviteUrl
   elements.inviteHint.textContent =
     "둘 다 같은 링크를 저장해두면 다음부터 회원가입 없이 바로 통화할 수 있습니다."
 }
 
 async function copyInviteLink() {
+  const inviteText = elements.inviteLink.textContent ?? ""
+
   try {
-    await navigator.clipboard.writeText(elements.inviteLink.value)
+    await navigator.clipboard.writeText(inviteText)
     setStatus("개인 링크를 복사했습니다. 그대로 보내면 됩니다.")
   } catch {
-    elements.inviteLink.select()
+    const helper = document.createElement("textarea")
+    helper.value = inviteText
+    document.body.append(helper)
+    helper.select()
     document.execCommand("copy")
+    helper.remove()
     setStatus("개인 링크를 복사했습니다.")
   }
 }

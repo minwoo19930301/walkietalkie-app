@@ -15,16 +15,27 @@
       <section class="view setup-view" id="setupView">
         <div class="setup-stack">
           <article class="stack-card hero-card">
-            <p class="eyebrow">WalkieTalkie</p>
-            <h1>워키타키</h1>
-            <p class="hero-copy">
-              둘만 쓰는 영상·음성 통화. 앱 설치 없이 같은 개인 링크 하나만 저장해두면
-              브라우저에서 바로 연결됩니다.
-            </p>
-            <div class="mini-pills">
-              <span class="mini-pill">모바일 우선</span>
-              <span class="mini-pill">거의 0원 운영</span>
-              <span class="mini-pill">둘만 접속</span>
+            <div class="hero-grid">
+              <div class="hero-copybox">
+                <p class="eyebrow">WalkieTalkie</p>
+                <h1>워키타키</h1>
+                <p class="hero-copy">
+                  둘만 쓰는 영상·음성 통화. 앱 설치 없이 같은 개인 링크 하나만 저장해두면
+                  브라우저에서 바로 연결됩니다.
+                </p>
+                <div class="mini-pills">
+                  <span class="mini-pill">모바일 우선</span>
+                  <span class="mini-pill">거의 0원 운영</span>
+                  <span class="mini-pill">둘만 접속</span>
+                </div>
+              </div>
+
+              <div class="hero-art" aria-hidden="true">
+                <span class="signal-ring ring-1"></span>
+                <span class="signal-ring ring-2"></span>
+                <span class="signal-ring ring-3"></span>
+                <span class="signal-core"></span>
+              </div>
             </div>
           </article>
 
@@ -53,7 +64,7 @@
 
             <label class="field">
               <span>개인 링크</span>
-              <textarea id="inviteLink" rows="3" readonly></textarea>
+              <div id="inviteLink" class="invite-output"></div>
             </label>
 
             <p class="invite-hint" id="inviteHint">
@@ -61,8 +72,10 @@
             </p>
 
             <div class="setup-actions">
-              <button id="regenerateLinkBtn" class="secondary-btn">새 링크</button>
-              <button id="copyInviteBtn" class="secondary-btn">링크 복사</button>
+              <div class="sub-actions">
+                <button id="regenerateLinkBtn" class="secondary-btn">새 링크</button>
+                <button id="copyInviteBtn" class="secondary-btn">링크 복사</button>
+              </div>
               <button id="joinBtn" class="primary-btn">통화 시작</button>
             </div>
 
@@ -73,15 +86,15 @@
 
           <article class="stack-card tips-card">
             <div class="tip-row">
-              <strong>01</strong>
+              <strong>무료 운영</strong>
               <p>Workers 무료 플랜 기준으로 고정 서버비 없이 계속 쓰기 쉽게 설계했습니다.</p>
             </div>
             <div class="tip-row">
-              <strong>02</strong>
+              <strong>바로 연결</strong>
               <p>통화 시작을 누르면 실제 통화 화면으로 전환되고, 상대방이 같은 링크로 들어오면 바로 연결됩니다.</p>
             </div>
             <div class="tip-row">
-              <strong>03</strong>
+              <strong>확장 가능</strong>
               <p>연결이 안 되는 일부 네트워크에서는 나중에 TURN만 추가하면 됩니다.</p>
             </div>
           </article>

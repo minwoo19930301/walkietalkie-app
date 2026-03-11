@@ -41,6 +41,7 @@ body {
   transition:
     background 260ms ease,
     color 260ms ease;
+  overflow: hidden;
 }
 
 body::before {
@@ -76,39 +77,16 @@ body[data-view="call"] {
 }
 
 .setup-view {
-  padding: 28px 16px 36px;
+  padding: 16px;
   display: grid;
   align-items: center;
 }
 
 .setup-stack {
-  position: relative;
-  width: min(100%, 460px);
+  width: min(100%, 430px);
+  height: min(calc(100dvh - 32px), 860px);
   margin: 0 auto;
-  display: grid;
-  gap: 16px;
-}
-
-.setup-stack::before,
-.setup-stack::after {
-  content: "";
-  position: absolute;
-  inset: auto 20px 24px;
-  border-radius: 34px;
-  pointer-events: none;
-}
-
-.setup-stack::before {
-  top: 84px;
-  background: rgba(255, 248, 239, 0.36);
-  transform: rotate(-3deg);
-  box-shadow: 0 28px 70px rgba(86, 49, 26, 0.08);
-}
-
-.setup-stack::after {
-  top: 108px;
-  background: rgba(255, 248, 239, 0.26);
-  transform: rotate(2deg);
+  display: block;
 }
 
 .stack-card {
@@ -121,26 +99,20 @@ body[data-view="call"] {
 }
 
 .hero-card {
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: 1fr auto;
   overflow: hidden;
-  padding: 24px 22px;
+  padding: 28px 24px;
   background:
     linear-gradient(135deg, rgba(255, 247, 228, 0.98), rgba(255, 240, 233, 0.9)),
     var(--card-strong);
 }
 
-.action-card {
-  padding: 22px 20px 20px;
-  background: var(--card-strong);
-}
-
-.tips-card {
-  padding: 16px;
-  background: rgba(255, 248, 239, 0.72);
-}
-
 .hero-grid {
   display: grid;
-  gap: 18px;
+  gap: 20px;
+  align-content: center;
 }
 
 .hero-copybox {
@@ -150,7 +122,7 @@ body[data-view="call"] {
 
 .hero-art {
   position: relative;
-  min-height: 120px;
+  min-height: 140px;
   border-radius: 28px;
   overflow: hidden;
   background:
@@ -196,8 +168,7 @@ body[data-view="call"] {
     0 18px 36px rgba(181, 74, 40, 0.22);
 }
 
-.eyebrow,
-.card-kicker {
+.eyebrow {
   margin: 0 0 10px;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -205,8 +176,7 @@ body[data-view="call"] {
   color: var(--accent-strong);
 }
 
-.hero-card h1,
-.action-card h2 {
+.hero-card h1 {
   margin: 0;
   letter-spacing: -0.05em;
   font-family: var(--font-display);
@@ -217,15 +187,8 @@ body[data-view="call"] {
   line-height: 0.9;
 }
 
-.action-card h2 {
-  font-size: 1.8rem;
-  line-height: 1;
-}
-
 .hero-copy,
-.invite-hint,
 .setup-status,
-.tip-row p,
 .status-line,
 .stage-placeholder span,
 .pip-placeholder span {
@@ -263,76 +226,10 @@ body[data-view="call"] {
   color: var(--accent-strong);
 }
 
-.card-head {
+.intro-footer {
   display: grid;
   gap: 16px;
-  margin-bottom: 20px;
-}
-
-.toggle-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  justify-self: start;
-  min-height: 46px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.7);
-  font-weight: 700;
-}
-
-.toggle-pill input {
-  inline-size: 18px;
-  block-size: 18px;
-  margin: 0;
-}
-
-.field {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.field span {
-  font-weight: 700;
-}
-
-.field input,
-.invite-output {
-  width: 100%;
-  padding: 14px 16px;
-  border: 1px solid rgba(78, 52, 40, 0.12);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.82);
-  color: var(--ink);
-  font: inherit;
-  line-height: 1.55;
-}
-
-.field input:focus,
-.invite-output:focus {
-  outline: 2px solid rgba(209, 100, 66, 0.18);
-  border-color: rgba(209, 100, 66, 0.45);
-}
-
-.invite-output {
-  min-height: 112px;
-  display: block;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.setup-actions {
-  display: grid;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.sub-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  align-self: end;
 }
 
 button {
@@ -377,29 +274,7 @@ button:disabled {
 }
 
 .setup-status {
-  margin-top: 16px;
   font-size: 0.96rem;
-}
-
-.tip-row {
-  display: grid;
-  gap: 10px;
-  align-items: start;
-  padding: 14px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.52);
-  border: 1px solid rgba(78, 52, 40, 0.06);
-}
-
-.tip-row + .tip-row {
-  margin-top: 10px;
-}
-
-.tip-row strong {
-  color: var(--accent-strong);
-  font-size: 0.82rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 
 .call-view {
@@ -543,21 +418,113 @@ button:disabled {
   display: grid;
   place-content: center;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
   color: #fff8f4;
+  box-shadow:
+    inset 0 2px 2px rgba(255, 255, 255, 0.16),
+    inset 0 -6px 10px rgba(0, 0, 0, 0.2),
+    0 10px 18px rgba(0, 0, 0, 0.18);
 }
 
 .icon-button[data-active="false"] {
-  background: rgba(122, 72, 82, 0.84);
+  background:
+    linear-gradient(180deg, rgba(122, 72, 82, 0.95), rgba(74, 40, 49, 0.92));
 }
 
 .end-button {
   background: linear-gradient(180deg, #e75d5d, #c93636);
 }
 
-.emoji {
-  font-size: 1.55rem;
-  line-height: 1;
+.control-icon {
+  inline-size: 26px;
+  block-size: 26px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.15));
+}
+
+.icon-off-indicator {
+  stroke: #ffb7b7;
+}
+
+.end-icon {
+  transform: rotate(180deg);
+}
+
+.waiting-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: 24px 18px 120px;
+  background: rgba(9, 8, 15, 0.34);
+  backdrop-filter: blur(12px);
+}
+
+.waiting-modal {
+  width: min(100%, 360px);
+  padding: 22px 18px 18px;
+  border-radius: 28px;
+  color: var(--ink);
+  background:
+    linear-gradient(180deg, rgba(255, 250, 245, 0.96), rgba(250, 241, 236, 0.92));
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.28);
+}
+
+.modal-kicker {
+  margin: 0 0 8px;
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.waiting-modal h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.modal-copy {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.invite-output {
+  width: 100%;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(78, 52, 40, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  line-height: 1.55;
+  min-height: 112px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.modal-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.text-btn {
+  min-height: 44px;
+  margin-top: 10px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 700;
 }
 
 .icon-text {
@@ -579,36 +546,16 @@ button:disabled {
 
   .setup-stack {
     width: min(100%, 980px);
-    grid-template-columns: 1.05fr 0.95fr;
-    gap: 18px;
-    align-items: start;
-  }
-
-  .setup-stack::before,
-  .setup-stack::after {
-    inset: auto 80px 42px;
+    height: min(calc(100dvh - 96px), 720px);
   }
 
   .hero-card {
-    min-height: 100%;
-    padding: 38px 34px;
+    padding: 40px 38px;
   }
 
   .hero-grid {
-    grid-template-columns: 1.15fr 0.85fr;
+    grid-template-columns: 1.1fr 0.9fr;
     align-items: center;
-  }
-
-  .tips-card {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    max-width: none;
-  }
-
-  .tip-row + .tip-row {
-    margin-top: 0;
   }
 }
 

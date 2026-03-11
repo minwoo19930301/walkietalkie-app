@@ -17,17 +17,12 @@
           <article class="stack-card hero-card">
             <div class="hero-grid">
               <div class="hero-copybox">
-                <p class="eyebrow">WalkieTalkie</p>
-                <h1>워키타키</h1>
+                <p class="eyebrow">browser to browser</p>
+                <h1>컴맹이 만든<br />워키타키</h1>
                 <p class="hero-copy">
-                  둘만 쓰는 영상·음성 통화. 앱 설치 없이 같은 개인 링크 하나만 저장해두면
-                  브라우저에서 바로 연결됩니다.
+                  개인 링크 전달만으로 브라우저끼리 바로 통화합니다. 설치도 회원가입도
+                  없습니다.
                 </p>
-                <div class="mini-pills">
-                  <span class="mini-pill">모바일 우선</span>
-                  <span class="mini-pill">거의 0원 운영</span>
-                  <span class="mini-pill">둘만 접속</span>
-                </div>
               </div>
 
               <div class="hero-art" aria-hidden="true">
@@ -37,65 +32,17 @@
                 <span class="signal-core"></span>
               </div>
             </div>
-          </article>
 
-          <article class="stack-card action-card">
-            <div class="card-head">
-              <div>
-                <p class="card-kicker">개인 통화 카드</p>
-                <h2>같은 링크로 계속 쓰기</h2>
+            <div class="intro-footer">
+              <div class="mini-pills">
+                <span class="mini-pill">개인 링크 전달</span>
+                <span class="mini-pill">브라우저 통화</span>
               </div>
-              <label class="toggle-pill">
-                <input id="audioOnly" type="checkbox" />
-                <span>이번엔 음성만</span>
-              </label>
-            </div>
 
-            <label class="field">
-              <span>내 이름</span>
-              <input
-                id="displayName"
-                type="text"
-                maxlength="24"
-                autocomplete="nickname"
-                placeholder="예: Minwoo"
-              />
-            </label>
-
-            <label class="field">
-              <span>개인 링크</span>
-              <div id="inviteLink" class="invite-output"></div>
-            </label>
-
-            <p class="invite-hint" id="inviteHint">
-              같은 링크를 둘 다 저장해두면 다음부터 바로 통화할 수 있습니다.
-            </p>
-
-            <div class="setup-actions">
-              <div class="sub-actions">
-                <button id="regenerateLinkBtn" class="secondary-btn">새 링크</button>
-                <button id="copyInviteBtn" class="secondary-btn">링크 복사</button>
-              </div>
-              <button id="joinBtn" class="primary-btn">통화 시작</button>
-            </div>
-
-            <p class="setup-status" id="setupStatusText">
-              서버는 연결만 붙여주고 영상·음성은 브라우저끼리 직접 주고받습니다.
-            </p>
-          </article>
-
-          <article class="stack-card tips-card">
-            <div class="tip-row">
-              <strong>무료 운영</strong>
-              <p>Workers 무료 플랜 기준으로 고정 서버비 없이 계속 쓰기 쉽게 설계했습니다.</p>
-            </div>
-            <div class="tip-row">
-              <strong>바로 연결</strong>
-              <p>통화 시작을 누르면 실제 통화 화면으로 전환되고, 상대방이 같은 링크로 들어오면 바로 연결됩니다.</p>
-            </div>
-            <div class="tip-row">
-              <strong>확장 가능</strong>
-              <p>연결이 안 되는 일부 네트워크에서는 나중에 TURN만 추가하면 됩니다.</p>
+              <button id="joinBtn" class="primary-btn intro-btn">통화 시작</button>
+              <p class="setup-status" id="setupStatusText">
+                통화를 시작하면 바로 통화 화면으로 전환됩니다.
+              </p>
             </div>
           </article>
         </div>
@@ -132,11 +79,23 @@
 
           <div class="control-dock">
             <button id="toggleMicBtn" class="icon-button" type="button" disabled aria-label="마이크">
-              <span class="emoji" id="toggleMicEmoji" aria-hidden="true">🎙️</span>
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z"
+                />
+                <path d="M6 11.5a6 6 0 0 0 12 0" />
+                <path d="M12 17.5v3" />
+                <path d="M8.5 20.5h7" />
+                <path id="toggleMicOff" class="icon-off-indicator hidden" d="M5 5l14 14" />
+              </svg>
               <span class="icon-text" id="toggleMicText">마이크</span>
             </button>
             <button id="toggleCameraBtn" class="icon-button" type="button" disabled aria-label="카메라">
-              <span class="emoji" id="toggleCameraEmoji" aria-hidden="true">📹</span>
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4.5 8.5A2.5 2.5 0 0 1 7 6h7a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 14 18H7a2.5 2.5 0 0 1-2.5-2.5v-7Z" />
+                <path d="m16.5 10 3-1.8a1 1 0 0 1 1.5.86v5.88a1 1 0 0 1-1.5.86L16.5 14" />
+                <path id="toggleCameraOff" class="icon-off-indicator hidden" d="M4 5l16 14" />
+              </svg>
               <span class="icon-text" id="toggleCameraText">카메라</span>
             </button>
             <button
@@ -146,9 +105,29 @@
               disabled
               aria-label="통화 종료"
             >
-              <span class="emoji" aria-hidden="true">📞</span>
+              <svg class="control-icon end-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6.5 15.5c3.7-3 7.3-3 11 0" />
+                <path d="M8.2 14.6 6 18" />
+                <path d="M15.8 14.6 18 18" />
+              </svg>
               <span class="icon-text">종료</span>
             </button>
+          </div>
+
+          <div class="waiting-modal-backdrop hidden" id="waitingModal">
+            <div class="waiting-modal" role="dialog" aria-modal="true" aria-labelledby="waitingTitle">
+              <p class="modal-kicker">상대 대기 중</p>
+              <h2 id="waitingTitle">링크를 전달해 들어오게 하세요</h2>
+              <p class="modal-copy">
+                이 링크를 보내면 같은 워키타키 방으로 바로 들어올 수 있습니다.
+              </p>
+              <div id="inviteLink" class="invite-output modal-link"></div>
+              <div class="modal-actions">
+                <button id="shareInviteBtn" class="primary-btn">링크 전달</button>
+                <button id="copyInviteBtn" class="secondary-btn">링크 복사</button>
+              </div>
+              <button id="regenerateLinkBtn" class="text-btn" type="button">새 링크 만들기</button>
+            </div>
           </div>
         </div>
       </section>

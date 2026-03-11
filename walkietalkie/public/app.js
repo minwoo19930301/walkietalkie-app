@@ -1,21 +1,21 @@
 const STORAGE_PREFIX = "walkietalkie"
+const DEFAULT_DISPLAY_NAME = "참여자"
 
 const elements = {
   setupView: document.querySelector("#setupView"),
   callView: document.querySelector("#callView"),
-  displayName: document.querySelector("#displayName"),
-  audioOnly: document.querySelector("#audioOnly"),
+  waitingModal: document.querySelector("#waitingModal"),
   inviteLink: document.querySelector("#inviteLink"),
-  inviteHint: document.querySelector("#inviteHint"),
   setupStatusText: document.querySelector("#setupStatusText"),
   joinBtn: document.querySelector("#joinBtn"),
+  shareInviteBtn: document.querySelector("#shareInviteBtn"),
   copyInviteBtn: document.querySelector("#copyInviteBtn"),
   regenerateLinkBtn: document.querySelector("#regenerateLinkBtn"),
   toggleMicBtn: document.querySelector("#toggleMicBtn"),
-  toggleMicEmoji: document.querySelector("#toggleMicEmoji"),
+  toggleMicOff: document.querySelector("#toggleMicOff"),
   toggleMicText: document.querySelector("#toggleMicText"),
   toggleCameraBtn: document.querySelector("#toggleCameraBtn"),
-  toggleCameraEmoji: document.querySelector("#toggleCameraEmoji"),
+  toggleCameraOff: document.querySelector("#toggleCameraOff"),
   toggleCameraText: document.querySelector("#toggleCameraText"),
   leaveBtn: document.querySelector("#leaveBtn"),
   statusText: document.querySelector("#statusText"),
@@ -40,8 +40,6 @@ const DEFAULT_ICE_SERVERS = [
   }
 ]
 
-const savedName = localStorage.getItem(`${STORAGE_PREFIX}.displayName`) ?? ""
-const savedAudioOnly = localStorage.getItem(`${STORAGE_PREFIX}.audioOnly`) === "true"
 const clientId =
   sessionStorage.getItem(`${STORAGE_PREFIX}.clientId`) ?? `wt-${crypto.randomUUID()}`
 
@@ -62,28 +60,24 @@ const state = {
   peerMedia: { ...DEFAULT_PEER_MEDIA },
   selfMedia: {
     audioEnabled: true,
-    videoEnabled: !savedAudioOnly,
-    hasVideo: !savedAudioOnly
+    videoEnabled: true,
+    hasVideo: true
   },
   iceServersPromise: null,
   isLeaving: false
 }
 
-elements.displayName.value = savedName
-elements.audioOnly.checked = savedAudioOnly
-
 bindEvents()
 bootstrap()
 
 function bindEvents() {
+  elements.joinBtn.addEventListener("click", joinCall)
+  elements.shareInviteBtn.addEventListener("click", shareInviteLink)
   elements.copyInviteBtn.addEventListener("click", copyInviteLink)
   elements.regenerateLinkBtn.addEventListener("click", regenerateInviteLink)
-  elements.joinBtn.addEventListener("click", joinCall)
   elements.leaveBtn.addEventListener("click", leaveCall)
   elements.toggleMicBtn.addEventListener("click", toggleMicrophone)
   elements.toggleCameraBtn.addEventListener("click", toggleCamera)
-  elements.displayName.addEventListener("change", persistPreferences)
-  elements.audioOnly.addEventListener("change", handleAudioModeChange)
   window.addEventListener("hashchange", handleHashChange)
   window.addEventListener("beforeunload", () => {
     if (state.socket?.readyState === WebSocket.OPEN) {
@@ -97,24 +91,10 @@ function bootstrap() {
   renderInvite()
   renderLocalPreviewState()
   renderRemoteState()
+  toggleWaitingModal(false)
   setView("setup")
-  setStatus("서버는 연결만 붙여주고 영상·음성은 브라우저끼리 직접 주고받습니다.")
+  setStatus("통화를 시작하면 바로 통화 화면으로 전환됩니다.")
   updateControls()
-}
-
-function persistPreferences() {
-  localStorage.setItem(`${STORAGE_PREFIX}.displayName`, elements.displayName.value.trim())
-  localStorage.setItem(`${STORAGE_PREFIX}.audioOnly`, String(elements.audioOnly.checked))
-}
-
-function handleAudioModeChange() {
-  persistPreferences()
-  if (!state.localStream) {
-    state.selfMedia.hasVideo = !elements.audioOnly.checked
-    state.selfMedia.videoEnabled = !elements.audioOnly.checked
-    renderLocalPreviewState()
-    updateControls()
-  }
 }
 
 function ensureInvite() {
@@ -178,10 +158,7 @@ function buildInviteUrl(invite) {
 }
 
 function renderInvite() {
-  const inviteUrl = buildInviteUrl(state.invite)
-  elements.inviteLink.textContent = inviteUrl
-  elements.inviteHint.textContent =
-    "둘 다 같은 링크를 저장해두면 다음부터 회원가입 없이 바로 통화할 수 있습니다."
+  elements.inviteLink.textContent = buildInviteUrl(state.invite)
 }
 
 async function copyInviteLink() {
@@ -189,7 +166,6 @@ async function copyInviteLink() {
 
   try {
     await navigator.clipboard.writeText(inviteText)
-    setStatus("개인 링크를 복사했습니다. 그대로 보내면 됩니다.")
   } catch {
     const helper = document.createElement("textarea")
     helper.value = inviteText
@@ -197,39 +173,72 @@ async function copyInviteLink() {
     helper.select()
     document.execCommand("copy")
     helper.remove()
-    setStatus("개인 링크를 복사했습니다.")
   }
+
+  setStatus("개인 링크를 복사했습니다.")
+}
+
+async function shareInviteLink() {
+  const inviteText = elements.inviteLink.textContent ?? ""
+  const shareData = {
+    title: "워키타키 링크",
+    text: "이 링크로 들어오면 바로 통화할 수 있어요.",
+    url: inviteText
+  }
+
+  if (typeof navigator.share === "function") {
+    try {
+      await navigator.share(shareData)
+      setStatus("링크 전달 창을 열었습니다.")
+      return
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return
+      }
+    }
+  }
+
+  await copyInviteLink()
+  setStatus("공유 시트를 열 수 없어 링크를 복사했습니다.")
 }
 
 async function regenerateInviteLink() {
-  if (state.socket || state.localStream) {
-    await leaveCall()
+  const shouldRejoin = Boolean(state.socket || state.localStream)
+
+  if (shouldRejoin) {
+    await hardReset({ returnToSetup: false })
   }
 
   state.invite = createInvite()
   replaceInviteHash(state.invite)
   renderInvite()
-  setStatus("새 개인 링크를 만들었습니다. 이전 링크는 더 이상 쓰지 않는 편이 안전합니다.")
+
+  if (shouldRejoin) {
+    setView("call")
+    setStatus("새 링크를 만들었습니다. 이 링크를 다시 전달해 주세요.")
+    await joinCall({ reuseCurrentView: true })
+    return
+  }
+
+  setStatus("새 개인 링크를 만들었습니다.")
 }
 
-async function joinCall() {
+async function joinCall(options = {}) {
   if (state.socket || state.peerConnection) {
     return
   }
 
-  const displayName = normalizeName(elements.displayName.value)
-  elements.displayName.value = displayName
-  persistPreferences()
+  const { reuseCurrentView = false } = options
 
   setStatus("브라우저 권한을 확인하고 있습니다...")
   updateControls(true)
 
   try {
-    await prepareLocalMedia(elements.audioOnly.checked)
+    await prepareLocalMedia()
     setView("call")
     state.roomId = await deriveRoomId(state.invite)
-    await openSignalingSocket(displayName)
-    setStatus("상대방이 같은 링크로 들어오면 바로 연결됩니다.")
+    await openSignalingSocket(DEFAULT_DISPLAY_NAME)
+    setStatus("상대가 아직 없다면 링크 전달 모달에서 바로 보낼 수 있습니다.")
   } catch (error) {
     console.error(error)
     setStatus(
@@ -237,13 +246,13 @@ async function joinCall() {
         ? error.message
         : "통화를 시작하지 못했습니다. 브라우저 권한과 네트워크를 확인해 주세요."
     )
-    await hardReset({ returnToSetup: true })
+    await hardReset({ returnToSetup: !reuseCurrentView })
   } finally {
     updateControls()
   }
 }
 
-async function prepareLocalMedia(audioOnly) {
+async function prepareLocalMedia() {
   stopTracks(state.localStream)
 
   let stream = null
@@ -254,29 +263,21 @@ async function prepareLocalMedia(audioOnly) {
         echoCancellation: true,
         noiseSuppression: true
       },
-      video: audioOnly
-        ? false
-        : {
-            facingMode: "user",
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          }
+      video: {
+        facingMode: "user",
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
     })
-  } catch (error) {
-    if (!audioOnly) {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true
-        },
-        video: false
-      })
-      elements.audioOnly.checked = true
-      persistPreferences()
-      setStatus("카메라를 열 수 없어 이번 통화는 음성 전용으로 전환했습니다.")
-    } else {
-      throw new Error("마이크 권한이 필요합니다.")
-    }
+  } catch {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true
+      },
+      video: false
+    })
+    setStatus("카메라를 열 수 없어 이번 통화는 음성 전용으로 전환했습니다.")
   }
 
   state.localStream = stream
@@ -319,6 +320,7 @@ function openSignalingSocket(displayName) {
       state.isLeaving = false
       settled = true
       sendPresence()
+      toggleWaitingModal(true)
       resolve()
     })
 
@@ -353,6 +355,7 @@ function openSignalingSocket(displayName) {
         setStatus("세션 연결이 종료되었습니다. 다시 통화 시작을 눌러 재연결할 수 있습니다.")
       }
 
+      toggleWaitingModal(false)
       updateControls()
     })
   })
@@ -389,6 +392,7 @@ async function handleSocketMessage(rawMessage) {
       state.peerMedia = { ...DEFAULT_PEER_MEDIA }
       resetPeerConnection()
       renderRemoteState()
+      toggleWaitingModal(true)
       setStatus("상대방이 나갔습니다. 같은 화면에서 다시 기다릴 수 있습니다.")
       break
     case "pong":
@@ -412,14 +416,17 @@ async function handleRoomState(message) {
 
   if (!peer) {
     resetPeerConnection()
+    toggleWaitingModal(true)
     setStatus("상대방이 같은 링크로 들어오기를 기다리는 중입니다.")
     return
   }
 
+  toggleWaitingModal(false)
+
   if (state.shouldOffer && !state.peerConnection && !state.offerInFlight) {
     await maybeCreateOffer()
   } else if (!state.shouldOffer) {
-    setStatus(`${state.peerName}님과 연결 중입니다.`)
+    setStatus(`${peerLabel()} 연결 중입니다.`)
   }
 }
 
@@ -675,12 +682,13 @@ async function hardReset({ returnToSetup = true } = {}) {
   state.localStream = null
   state.selfMedia = {
     audioEnabled: true,
-    videoEnabled: !elements.audioOnly.checked,
-    hasVideo: !elements.audioOnly.checked
+    videoEnabled: true,
+    hasVideo: true
   }
 
   elements.localVideo.srcObject = null
   elements.remoteVideo.srcObject = null
+  toggleWaitingModal(false)
 
   if (returnToSetup) {
     setView("setup")
@@ -730,7 +738,7 @@ function renderLocalPreviewState() {
 function renderRemoteState() {
   const hasPeer = Boolean(state.peerName)
   const showVideo = hasPeer && state.peerMedia.hasVideo && state.peerMedia.videoEnabled
-  const name = state.peerName || "상대방"
+  const name = peerLabel()
   const audioText = state.peerMedia.audioEnabled ? "마이크 켜짐" : "음소거"
   const cameraText = state.peerMedia.hasVideo
     ? state.peerMedia.videoEnabled
@@ -738,7 +746,7 @@ function renderRemoteState() {
       : "카메라 꺼짐"
     : "음성 전용"
 
-  elements.callTitle.textContent = hasPeer ? `${name}님` : "상대방을 기다리는 중"
+  elements.callTitle.textContent = hasPeer ? name : "상대방을 기다리는 중"
   elements.peerBadge.textContent = hasPeer ? `${name} · ${cameraText}` : "대기 중"
   elements.remoteVideo.classList.toggle("hidden", !showVideo)
   elements.remotePlaceholder.classList.toggle("hidden", showVideo)
@@ -750,7 +758,7 @@ function renderRemoteState() {
   }
 
   if (!showVideo) {
-    elements.remotePlaceholder.innerHTML = `<strong>${name}님</strong><span>${cameraText} · ${audioText}</span>`
+    elements.remotePlaceholder.innerHTML = `<strong>${name}</strong><span>${cameraText} · ${audioText}</span>`
   }
 }
 
@@ -765,18 +773,18 @@ function updateControls(isBusy = false) {
   elements.leaveBtn.disabled = !joined && !state.localStream
   elements.toggleMicBtn.disabled = !localAudioTrack
   elements.toggleCameraBtn.disabled = !localVideoTrack
-  elements.regenerateLinkBtn.disabled = joined || Boolean(state.localStream)
-  elements.displayName.disabled = joined || Boolean(state.localStream)
-  elements.audioOnly.disabled = joined || Boolean(state.localStream)
+  elements.regenerateLinkBtn.disabled = Boolean(state.peerName)
+  elements.shareInviteBtn.disabled = false
+  elements.copyInviteBtn.disabled = false
 
   elements.toggleMicBtn.dataset.active = String(audioEnabled)
   elements.toggleCameraBtn.dataset.active = String(videoEnabled)
   elements.leaveBtn.dataset.active = "true"
 
-  elements.toggleMicEmoji.textContent = audioEnabled ? "🎙️" : "🔇"
   elements.toggleMicText.textContent = audioEnabled ? "마이크" : "음소거"
-  elements.toggleCameraEmoji.textContent = videoEnabled ? "📹" : "🚫"
   elements.toggleCameraText.textContent = videoEnabled ? "카메라" : "영상끔"
+  elements.toggleMicOff.classList.toggle("hidden", audioEnabled)
+  elements.toggleCameraOff.classList.toggle("hidden", videoEnabled)
 }
 
 function setStatus(message) {
@@ -791,13 +799,17 @@ function setView(view) {
   elements.callView.setAttribute("aria-hidden", String(view !== "call"))
 }
 
-function normalizeName(value) {
-  const trimmed = value.trim().replace(/\s+/g, " ")
-  if (trimmed) {
-    return trimmed.slice(0, 24)
+function toggleWaitingModal(visible) {
+  const shouldShow = visible && document.body.dataset.view === "call"
+  elements.waitingModal.classList.toggle("hidden", !shouldShow)
+}
+
+function peerLabel() {
+  if (!state.peerName || state.peerName === DEFAULT_DISPLAY_NAME) {
+    return "상대방"
   }
 
-  return "Guest"
+  return state.peerName
 }
 
 function randomToken(size) {

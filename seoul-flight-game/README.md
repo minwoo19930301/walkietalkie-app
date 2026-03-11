@@ -10,8 +10,8 @@ python3 -m http.server 5174 --bind 127.0.0.1 --directory "/Users/minwokim/Docume
 
 ## 배포
 
-- GitHub Pages 워크플로: `.github/workflows/deploy-seoul-flight.yml`
-- 예상 URL: `https://minwoo19930301.github.io/walkietalkie-app/`
+- 배포 저장소: `https://github.com/minwoo19930301/seoul-flight-game`
+- 배포 URL: `https://minwoo19930301.github.io/seoul-flight-game/`
 
 ## 구성
 

@@ -7,7 +7,7 @@
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
     />
     <meta name="theme-color" content="#14131f" />
-    <title>워키타키</title>
+    <title>워키토키</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body data-view="setup">
@@ -17,8 +17,8 @@
           <article class="stack-card hero-card">
             <div class="hero-grid">
               <div class="hero-copybox">
-                <p class="eyebrow">browser to browser</p>
-                <h1>컴맹이 만든<br />워키타키</h1>
+                <p class="eyebrow">WalkieTalkie make by a Computer Illiterate</p>
+                <h1>컴맹이 만든<br />워키토키</h1>
                 <p class="hero-copy">
                   개인 링크 전달만으로 브라우저끼리 바로 통화합니다. 설치도 회원가입도
                   없습니다.
@@ -35,13 +35,16 @@
 
             <div class="intro-footer">
               <div class="mini-pills">
-                <span class="mini-pill">개인 링크 전달</span>
+                <span class="mini-pill">랜덤 링크 생성</span>
                 <span class="mini-pill">브라우저 통화</span>
               </div>
 
-              <div class="auto-enter-pill">1초 후 통화 화면으로 전환</div>
+              <div class="intro-note" aria-hidden="true">
+                <span class="intro-note-dot"></span>
+                <span>타이틀을 먼저 보여주고 개인 링크를 준비합니다.</span>
+              </div>
               <p class="setup-status" id="setupStatusText">
-                1초 뒤 통화 화면으로 전환됩니다.
+                처음 들어오면 2초 뒤 링크를 만들고, 3초 뒤 통화 화면으로 전환됩니다.
               </p>
             </div>
           </article>
@@ -57,7 +60,7 @@
           </div>
 
           <div class="call-topbar">
-            <span class="call-chip brand-chip">워키타키</span>
+            <span class="call-chip brand-chip">워키토키</span>
             <span class="call-chip" id="peerBadge">대기 중</span>
           </div>
 
@@ -78,6 +81,14 @@
           </aside>
 
           <div class="control-dock">
+            <button id="inviteBtn" class="icon-button" type="button" aria-label="초대 링크">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 15V5" />
+                <path d="m8 9 4-4 4 4" />
+                <path d="M5.5 14.5v2A2.5 2.5 0 0 0 8 19h8a2.5 2.5 0 0 0 2.5-2.5v-2" />
+              </svg>
+              <span class="icon-text">초대</span>
+            </button>
             <button id="toggleMicBtn" class="icon-button" type="button" disabled aria-label="마이크">
               <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path
@@ -105,10 +116,10 @@
               disabled
               aria-label="통화 종료"
             >
-              <svg class="control-icon end-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M6.5 15.5c3.7-3 7.3-3 11 0" />
-                <path d="M8.2 14.6 6 18" />
-                <path d="M15.8 14.6 18 18" />
+              <svg class="control-icon hangup-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M4.8 15.2a16.7 16.7 0 0 1 14.4 0l-1 2.8a1.3 1.3 0 0 1-1.7.8l-2.8-1.1a1.1 1.1 0 0 1-.7-1.4l.3-.7a13.6 13.6 0 0 0-2.3-.2c-.8 0-1.6.1-2.3.2l.3.7a1.1 1.1 0 0 1-.7 1.4L5.5 18.8a1.3 1.3 0 0 1-1.7-.8l-1-2.8Z"
+                />
               </svg>
               <span class="icon-text">종료</span>
             </button>
@@ -116,10 +127,22 @@
 
           <div class="waiting-modal-backdrop hidden" id="waitingModal">
             <div class="waiting-modal" role="dialog" aria-modal="true" aria-labelledby="waitingTitle">
-              <p class="modal-kicker">상대 대기 중</p>
-              <h2 id="waitingTitle">링크를 전달해 들어오게 하세요</h2>
+              <div class="modal-head">
+                <div>
+                  <p class="modal-kicker">상대 대기 중</p>
+                  <h2 id="waitingTitle">링크를 전달해 들어오게 하세요</h2>
+                </div>
+                <button
+                  id="closeWaitingModalBtn"
+                  class="modal-close"
+                  type="button"
+                  aria-label="초대 모달 닫기"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
               <p class="modal-copy">
-                이 링크를 보내면 같은 워키타키 방으로 바로 들어올 수 있습니다.
+                이 링크를 보내면 같은 워키토키 방으로 바로 들어올 수 있습니다.
               </p>
               <div id="inviteLink" class="invite-output modal-link"></div>
               <div class="modal-actions">

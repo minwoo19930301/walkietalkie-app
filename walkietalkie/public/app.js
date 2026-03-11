@@ -7,9 +7,11 @@ const elements = {
   waitingModal: document.querySelector("#waitingModal"),
   inviteLink: document.querySelector("#inviteLink"),
   setupStatusText: document.querySelector("#setupStatusText"),
+  inviteBtn: document.querySelector("#inviteBtn"),
   shareInviteBtn: document.querySelector("#shareInviteBtn"),
   copyInviteBtn: document.querySelector("#copyInviteBtn"),
   regenerateLinkBtn: document.querySelector("#regenerateLinkBtn"),
+  closeWaitingModalBtn: document.querySelector("#closeWaitingModalBtn"),
   toggleMicBtn: document.querySelector("#toggleMicBtn"),
   toggleMicOff: document.querySelector("#toggleMicOff"),
   toggleMicText: document.querySelector("#toggleMicText"),
@@ -65,20 +67,29 @@ const state = {
   iceServersPromise: null,
   isLeaving: false,
   isJoining: false,
+  inviteBootstrapTimer: null,
   autoEnterTimer: null,
-  shouldShowShareModal: false
+  shouldShowShareModal: false,
+  waitingModalDismissed: false
 }
 
 bindEvents()
 bootstrap()
 
 function bindEvents() {
+  elements.inviteBtn.addEventListener("click", openWaitingModal)
   elements.shareInviteBtn.addEventListener("click", shareInviteLink)
   elements.copyInviteBtn.addEventListener("click", copyInviteLink)
   elements.regenerateLinkBtn.addEventListener("click", regenerateInviteLink)
+  elements.closeWaitingModalBtn.addEventListener("click", closeWaitingModal)
   elements.leaveBtn.addEventListener("click", leaveCall)
   elements.toggleMicBtn.addEventListener("click", toggleMicrophone)
   elements.toggleCameraBtn.addEventListener("click", toggleCamera)
+  elements.waitingModal.addEventListener("click", (event) => {
+    if (event.target === elements.waitingModal) {
+      closeWaitingModal()
+    }
+  })
   window.addEventListener("hashchange", handleHashChange)
   window.addEventListener("beforeunload", () => {
     if (state.socket?.readyState === WebSocket.OPEN) {
@@ -91,20 +102,22 @@ function bootstrap() {
   const { invite, fromSharedLink } = ensureInvite()
   state.invite = invite
   state.shouldShowShareModal = !fromSharedLink
+  state.waitingModalDismissed = false
   renderInvite()
   renderLocalPreviewState()
   renderRemoteState()
-  toggleWaitingModal(false)
+  hideWaitingModal({ manual: false })
   setView("setup")
-  setStatus("1초 뒤 통화 화면으로 전환됩니다.")
+  setStatus("처음 들어오면 2초 뒤 링크를 만들고, 3초 뒤 통화 화면으로 전환됩니다.")
   updateControls()
 
   if (fromSharedLink) {
+    setStatus("공유 링크를 확인했습니다. 바로 통화 화면으로 들어갑니다.")
     void joinCall()
     return
   }
 
-  scheduleAutoEnter(1000)
+  beginIntroRedirect()
 }
 
 function ensureInvite() {
@@ -116,10 +129,8 @@ function ensureInvite() {
     }
   }
 
-  const invite = createInvite()
-  replaceInviteHash(invite)
   return {
-    invite,
+    invite: null,
     fromSharedLink: false
   }
 }
@@ -136,8 +147,10 @@ function handleHashChange() {
     return
   }
 
+  clearIntroTimers()
   state.invite = nextInvite
   state.shouldShowShareModal = false
+  state.waitingModalDismissed = false
   renderInvite()
   setStatus("공유 링크를 불러왔습니다. 바로 통화 화면으로 들어갑니다.")
   void joinCall()
@@ -176,11 +189,14 @@ function buildInviteUrl(invite) {
 }
 
 function renderInvite() {
-  elements.inviteLink.textContent = buildInviteUrl(state.invite)
+  elements.inviteLink.textContent = state.invite ? buildInviteUrl(state.invite) : ""
 }
 
 async function copyInviteLink() {
   const inviteText = elements.inviteLink.textContent ?? ""
+  if (!inviteText) {
+    return
+  }
 
   try {
     await navigator.clipboard.writeText(inviteText)
@@ -198,8 +214,12 @@ async function copyInviteLink() {
 
 async function shareInviteLink() {
   const inviteText = elements.inviteLink.textContent ?? ""
+  if (!inviteText) {
+    return
+  }
+
   const shareData = {
-    title: "워키타키 링크",
+    title: "워키토키 링크",
     text: "이 링크로 들어오면 바로 통화할 수 있어요.",
     url: inviteText
   }
@@ -229,6 +249,7 @@ async function regenerateInviteLink() {
 
   state.invite = createInvite()
   state.shouldShowShareModal = true
+  state.waitingModalDismissed = false
   replaceInviteHash(state.invite)
   renderInvite()
 
@@ -243,13 +264,13 @@ async function regenerateInviteLink() {
 }
 
 async function joinCall(options = {}) {
-  if (state.socket || state.peerConnection || state.isJoining) {
+  if (!state.invite || state.socket || state.peerConnection || state.isJoining) {
     return
   }
 
   const { reuseCurrentView = false } = options
 
-  clearAutoEnterTimer()
+  clearIntroTimers()
   state.isJoining = true
   setView("call")
   setStatus("카메라와 마이크를 준비하고 있습니다...")
@@ -346,7 +367,7 @@ function openSignalingSocket(displayName) {
       state.isLeaving = false
       settled = true
       sendPresence()
-      toggleWaitingModal(shouldShowWaitingModal())
+      syncWaitingModal()
       resolve()
     })
 
@@ -381,7 +402,7 @@ function openSignalingSocket(displayName) {
         setStatus("세션 연결이 종료되었습니다. 화면을 새로 열면 같은 링크로 다시 들어갈 수 있습니다.")
       }
 
-      toggleWaitingModal(false)
+      hideWaitingModal({ manual: false })
       updateControls()
     })
   })
@@ -398,7 +419,7 @@ async function handleSocketMessage(rawMessage) {
 
   switch (message.type) {
     case "joined":
-      setStatus("워키타키 방에 들어왔습니다. 상대방을 기다리는 중입니다.")
+      setStatus("워키토키 방에 들어왔습니다. 상대방을 기다리는 중입니다.")
       break
     case "room-full":
       setStatus(message.message ?? "이 링크는 이미 사용 중입니다.")
@@ -418,7 +439,7 @@ async function handleSocketMessage(rawMessage) {
       state.peerMedia = { ...DEFAULT_PEER_MEDIA }
       resetPeerConnection()
       renderRemoteState()
-      toggleWaitingModal(shouldShowWaitingModal())
+      syncWaitingModal()
       setStatus("상대방이 나갔습니다. 같은 화면에서 다시 기다릴 수 있습니다.")
       break
     case "pong":
@@ -442,12 +463,12 @@ async function handleRoomState(message) {
 
   if (!peer) {
     resetPeerConnection()
-    toggleWaitingModal(shouldShowWaitingModal())
+    syncWaitingModal()
     setStatus("상대방이 같은 링크로 들어오기를 기다리는 중입니다.")
     return
   }
 
-  toggleWaitingModal(false)
+  hideWaitingModal({ manual: false })
 
   if (state.shouldOffer && !state.peerConnection && !state.offerInFlight) {
     await maybeCreateOffer()
@@ -677,7 +698,7 @@ function toggleCamera() {
 
 async function leaveCall() {
   state.isLeaving = true
-  clearAutoEnterTimer()
+  clearIntroTimers()
 
   if (state.socket?.readyState === WebSocket.OPEN) {
     state.socket.close(1000, "User left")
@@ -688,6 +709,7 @@ async function leaveCall() {
 }
 
 async function hardReset({ returnToSetup = true } = {}) {
+  clearIntroTimers()
   resetPeerConnection()
 
   if (state.socket) {
@@ -705,6 +727,7 @@ async function hardReset({ returnToSetup = true } = {}) {
   state.peerMedia = { ...DEFAULT_PEER_MEDIA }
   state.isLeaving = false
   state.isJoining = false
+  state.waitingModalDismissed = false
 
   stopTracks(state.localStream)
   state.localStream = null
@@ -716,7 +739,7 @@ async function hardReset({ returnToSetup = true } = {}) {
 
   elements.localVideo.srcObject = null
   elements.remoteVideo.srcObject = null
-  toggleWaitingModal(false)
+  hideWaitingModal({ manual: false })
 
   if (returnToSetup) {
     setView("setup")
@@ -797,6 +820,7 @@ function updateControls(isBusy = false) {
   const audioEnabled = Boolean(localAudioTrack?.enabled)
   const videoEnabled = Boolean(localVideoTrack?.enabled)
 
+  elements.inviteBtn.disabled = !state.invite
   elements.leaveBtn.disabled = (!joined && !state.localStream) || isBusy
   elements.toggleMicBtn.disabled = !localAudioTrack
   elements.toggleCameraBtn.disabled = !localVideoTrack
@@ -806,6 +830,7 @@ function updateControls(isBusy = false) {
 
   elements.toggleMicBtn.dataset.active = String(audioEnabled)
   elements.toggleCameraBtn.dataset.active = String(videoEnabled)
+  elements.inviteBtn.dataset.active = "true"
   elements.leaveBtn.dataset.active = "true"
 
   elements.toggleMicText.textContent = audioEnabled ? "마이크" : "음소거"
@@ -824,15 +849,55 @@ function setView(view) {
   elements.setupView.classList.toggle("hidden", view !== "setup")
   elements.callView.classList.toggle("hidden", view !== "call")
   elements.callView.setAttribute("aria-hidden", String(view !== "call"))
+  syncWaitingModal()
 }
 
-function toggleWaitingModal(visible) {
-  const shouldShow = visible && document.body.dataset.view === "call"
-  elements.waitingModal.classList.toggle("hidden", !shouldShow)
+function openWaitingModal() {
+  if (!state.invite) {
+    return
+  }
+
+  state.waitingModalDismissed = false
+  syncWaitingModal(true)
+}
+
+function closeWaitingModal() {
+  hideWaitingModal({ manual: true })
+}
+
+function hideWaitingModal({ manual = false } = {}) {
+  if (manual) {
+    state.waitingModalDismissed = true
+  }
+
+  elements.waitingModal.classList.add("hidden")
 }
 
 function shouldShowWaitingModal() {
   return state.shouldShowShareModal && !state.peerName
+}
+
+function syncWaitingModal(force = false) {
+  const shouldShow =
+    document.body.dataset.view === "call" &&
+    Boolean(state.invite) &&
+    (force || (shouldShowWaitingModal() && !state.waitingModalDismissed))
+
+  elements.waitingModal.classList.toggle("hidden", !shouldShow)
+}
+
+function beginIntroRedirect() {
+  clearIntroTimers()
+  state.inviteBootstrapTimer = window.setTimeout(() => {
+    state.inviteBootstrapTimer = null
+    state.invite = createInvite()
+    state.shouldShowShareModal = true
+    state.waitingModalDismissed = false
+    replaceInviteHash(state.invite)
+    renderInvite()
+    setStatus("개인 링크가 준비됐습니다. 3초 뒤 통화 화면으로 전환됩니다.")
+    scheduleAutoEnter(3000)
+  }, 2000)
 }
 
 function scheduleAutoEnter(delay = 1000) {
@@ -840,7 +905,13 @@ function scheduleAutoEnter(delay = 1000) {
   state.autoEnterTimer = window.setTimeout(() => {
     state.autoEnterTimer = null
 
-    if (!state.socket && !state.peerConnection && !state.localStream && !state.isJoining) {
+    if (
+      state.invite &&
+      !state.socket &&
+      !state.peerConnection &&
+      !state.localStream &&
+      !state.isJoining
+    ) {
       void joinCall()
     }
   }, delay)
@@ -851,6 +922,15 @@ function clearAutoEnterTimer() {
     window.clearTimeout(state.autoEnterTimer)
     state.autoEnterTimer = null
   }
+}
+
+function clearIntroTimers() {
+  if (state.inviteBootstrapTimer) {
+    window.clearTimeout(state.inviteBootstrapTimer)
+    state.inviteBootstrapTimer = null
+  }
+
+  clearAutoEnterTimer()
 }
 
 function peerLabel() {

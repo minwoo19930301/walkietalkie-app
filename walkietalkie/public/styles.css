@@ -170,9 +170,9 @@ body[data-view="call"] {
 
 .eyebrow {
   margin: 0 0 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  line-height: 1.5;
   color: var(--accent-strong);
 }
 
@@ -232,22 +232,24 @@ body[data-view="call"] {
   align-self: end;
 }
 
-.auto-enter-pill {
+.intro-note {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 52px;
-  padding: 0 18px;
-  border-radius: 999px;
+  gap: 10px;
   color: var(--accent-strong);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 246, 238, 0.92));
-  border: 1px solid rgba(209, 100, 66, 0.16);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.intro-note-dot {
+  inline-size: 10px;
+  block-size: 10px;
+  flex: 0 0 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.75),
-    0 12px 22px rgba(181, 74, 40, 0.08);
-  font-size: 0.96rem;
-  font-weight: 800;
+    0 0 0 8px rgba(209, 100, 66, 0.12),
+    0 0 24px rgba(209, 100, 66, 0.18);
 }
 
 button {
@@ -422,7 +424,7 @@ button:disabled {
   bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
   display: flex;
   justify-content: center;
-  gap: 14px;
+  gap: 10px;
   padding: 12px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
@@ -431,8 +433,8 @@ button:disabled {
 }
 
 .icon-button {
-  inline-size: 68px;
-  block-size: 68px;
+  inline-size: 64px;
+  block-size: 64px;
   display: grid;
   place-content: center;
   border-radius: 999px;
@@ -469,8 +471,9 @@ button:disabled {
   stroke: #ffb7b7;
 }
 
-.end-icon {
-  transform: rotate(180deg);
+.hangup-icon {
+  fill: currentColor;
+  stroke: none;
 }
 
 .waiting-modal-backdrop {
@@ -494,6 +497,13 @@ button:disabled {
   box-shadow: 0 24px 56px rgba(0, 0, 0, 0.28);
 }
 
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
 .modal-kicker {
   margin: 0 0 8px;
   color: var(--accent-strong);
@@ -509,6 +519,20 @@ button:disabled {
   font-size: 2rem;
   line-height: 0.95;
   letter-spacing: -0.04em;
+}
+
+.modal-close {
+  inline-size: 38px;
+  block-size: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(78, 52, 40, 0.08);
+  border: 1px solid rgba(78, 52, 40, 0.08);
+  font-size: 1.35rem;
+  line-height: 1;
 }
 
 .modal-copy {

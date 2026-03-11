@@ -7,7 +7,6 @@ const elements = {
   waitingModal: document.querySelector("#waitingModal"),
   inviteLink: document.querySelector("#inviteLink"),
   setupStatusText: document.querySelector("#setupStatusText"),
-  joinBtn: document.querySelector("#joinBtn"),
   shareInviteBtn: document.querySelector("#shareInviteBtn"),
   copyInviteBtn: document.querySelector("#copyInviteBtn"),
   regenerateLinkBtn: document.querySelector("#regenerateLinkBtn"),
@@ -64,14 +63,16 @@ const state = {
     hasVideo: true
   },
   iceServersPromise: null,
-  isLeaving: false
+  isLeaving: false,
+  isJoining: false,
+  autoEnterTimer: null,
+  shouldShowShareModal: false
 }
 
 bindEvents()
 bootstrap()
 
 function bindEvents() {
-  elements.joinBtn.addEventListener("click", joinCall)
   elements.shareInviteBtn.addEventListener("click", shareInviteLink)
   elements.copyInviteBtn.addEventListener("click", copyInviteLink)
   elements.regenerateLinkBtn.addEventListener("click", regenerateInviteLink)
@@ -87,25 +88,40 @@ function bindEvents() {
 }
 
 function bootstrap() {
-  state.invite = ensureInvite()
+  const { invite, fromSharedLink } = ensureInvite()
+  state.invite = invite
+  state.shouldShowShareModal = !fromSharedLink
   renderInvite()
   renderLocalPreviewState()
   renderRemoteState()
   toggleWaitingModal(false)
   setView("setup")
-  setStatus("통화를 시작하면 바로 통화 화면으로 전환됩니다.")
+  setStatus("1초 뒤 통화 화면으로 전환됩니다.")
   updateControls()
+
+  if (fromSharedLink) {
+    void joinCall()
+    return
+  }
+
+  scheduleAutoEnter(1000)
 }
 
 function ensureInvite() {
   const fromHash = parseInviteHash(location.hash)
   if (fromHash) {
-    return fromHash
+    return {
+      invite: fromHash,
+      fromSharedLink: true
+    }
   }
 
   const invite = createInvite()
   replaceInviteHash(invite)
-  return invite
+  return {
+    invite,
+    fromSharedLink: false
+  }
 }
 
 function handleHashChange() {
@@ -121,8 +137,10 @@ function handleHashChange() {
   }
 
   state.invite = nextInvite
+  state.shouldShowShareModal = false
   renderInvite()
-  setStatus("새 개인 링크를 불러왔습니다.")
+  setStatus("공유 링크를 불러왔습니다. 바로 통화 화면으로 들어갑니다.")
+  void joinCall()
 }
 
 function createInvite() {
@@ -210,6 +228,7 @@ async function regenerateInviteLink() {
   }
 
   state.invite = createInvite()
+  state.shouldShowShareModal = true
   replaceInviteHash(state.invite)
   renderInvite()
 
@@ -224,21 +243,27 @@ async function regenerateInviteLink() {
 }
 
 async function joinCall(options = {}) {
-  if (state.socket || state.peerConnection) {
+  if (state.socket || state.peerConnection || state.isJoining) {
     return
   }
 
   const { reuseCurrentView = false } = options
 
-  setStatus("브라우저 권한을 확인하고 있습니다...")
+  clearAutoEnterTimer()
+  state.isJoining = true
+  setView("call")
+  setStatus("카메라와 마이크를 준비하고 있습니다...")
   updateControls(true)
 
   try {
     await prepareLocalMedia()
-    setView("call")
     state.roomId = await deriveRoomId(state.invite)
     await openSignalingSocket(DEFAULT_DISPLAY_NAME)
-    setStatus("상대가 아직 없다면 링크 전달 모달에서 바로 보낼 수 있습니다.")
+    if (state.shouldShowShareModal) {
+      setStatus("상대가 아직 없다면 링크 전달 모달에서 바로 보낼 수 있습니다.")
+    } else {
+      setStatus("상대방이 같은 링크로 들어오기를 기다리는 중입니다.")
+    }
   } catch (error) {
     console.error(error)
     setStatus(
@@ -248,6 +273,7 @@ async function joinCall(options = {}) {
     )
     await hardReset({ returnToSetup: !reuseCurrentView })
   } finally {
+    state.isJoining = false
     updateControls()
   }
 }
@@ -320,7 +346,7 @@ function openSignalingSocket(displayName) {
       state.isLeaving = false
       settled = true
       sendPresence()
-      toggleWaitingModal(true)
+      toggleWaitingModal(shouldShowWaitingModal())
       resolve()
     })
 
@@ -352,7 +378,7 @@ function openSignalingSocket(displayName) {
       }
 
       if (!userInitiated && state.localStream) {
-        setStatus("세션 연결이 종료되었습니다. 다시 통화 시작을 눌러 재연결할 수 있습니다.")
+        setStatus("세션 연결이 종료되었습니다. 화면을 새로 열면 같은 링크로 다시 들어갈 수 있습니다.")
       }
 
       toggleWaitingModal(false)
@@ -392,7 +418,7 @@ async function handleSocketMessage(rawMessage) {
       state.peerMedia = { ...DEFAULT_PEER_MEDIA }
       resetPeerConnection()
       renderRemoteState()
-      toggleWaitingModal(true)
+      toggleWaitingModal(shouldShowWaitingModal())
       setStatus("상대방이 나갔습니다. 같은 화면에서 다시 기다릴 수 있습니다.")
       break
     case "pong":
@@ -416,7 +442,7 @@ async function handleRoomState(message) {
 
   if (!peer) {
     resetPeerConnection()
-    toggleWaitingModal(true)
+    toggleWaitingModal(shouldShowWaitingModal())
     setStatus("상대방이 같은 링크로 들어오기를 기다리는 중입니다.")
     return
   }
@@ -651,13 +677,14 @@ function toggleCamera() {
 
 async function leaveCall() {
   state.isLeaving = true
+  clearAutoEnterTimer()
 
   if (state.socket?.readyState === WebSocket.OPEN) {
     state.socket.close(1000, "User left")
   }
 
   await hardReset({ returnToSetup: true })
-  setStatus("통화를 종료했습니다. 같은 링크로 다시 시작할 수 있습니다.")
+  setStatus("통화를 종료했습니다. 다시 들어가려면 링크를 다시 열어 주세요.")
 }
 
 async function hardReset({ returnToSetup = true } = {}) {
@@ -677,6 +704,7 @@ async function hardReset({ returnToSetup = true } = {}) {
   state.peerName = ""
   state.peerMedia = { ...DEFAULT_PEER_MEDIA }
   state.isLeaving = false
+  state.isJoining = false
 
   stopTracks(state.localStream)
   state.localStream = null
@@ -732,7 +760,7 @@ function renderLocalPreviewState() {
   elements.localPlaceholder.classList.toggle("hidden", showVideo)
   elements.localPlaceholder.innerHTML = hasStream
     ? `<strong>${cameraLabel}</strong><span>${micLabel}</span>`
-    : "<strong>통화 시작 전</strong><span>통화를 시작하면 내 화면이 여기에 표시됩니다.</span>"
+    : "<strong>연결 준비 전</strong><span>곧 내 화면이 여기에 표시됩니다.</span>"
 }
 
 function renderRemoteState() {
@@ -769,8 +797,7 @@ function updateControls(isBusy = false) {
   const audioEnabled = Boolean(localAudioTrack?.enabled)
   const videoEnabled = Boolean(localVideoTrack?.enabled)
 
-  elements.joinBtn.disabled = isBusy || joined || Boolean(state.localStream)
-  elements.leaveBtn.disabled = !joined && !state.localStream
+  elements.leaveBtn.disabled = (!joined && !state.localStream) || isBusy
   elements.toggleMicBtn.disabled = !localAudioTrack
   elements.toggleCameraBtn.disabled = !localVideoTrack
   elements.regenerateLinkBtn.disabled = Boolean(state.peerName)
@@ -802,6 +829,28 @@ function setView(view) {
 function toggleWaitingModal(visible) {
   const shouldShow = visible && document.body.dataset.view === "call"
   elements.waitingModal.classList.toggle("hidden", !shouldShow)
+}
+
+function shouldShowWaitingModal() {
+  return state.shouldShowShareModal && !state.peerName
+}
+
+function scheduleAutoEnter(delay = 1000) {
+  clearAutoEnterTimer()
+  state.autoEnterTimer = window.setTimeout(() => {
+    state.autoEnterTimer = null
+
+    if (!state.socket && !state.peerConnection && !state.localStream && !state.isJoining) {
+      void joinCall()
+    }
+  }, delay)
+}
+
+function clearAutoEnterTimer() {
+  if (state.autoEnterTimer) {
+    window.clearTimeout(state.autoEnterTimer)
+    state.autoEnterTimer = null
+  }
 }
 
 function peerLabel() {

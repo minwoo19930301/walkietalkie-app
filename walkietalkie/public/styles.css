@@ -232,6 +232,24 @@ body[data-view="call"] {
   align-self: end;
 }
 
+.auto-enter-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 18px;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 246, 238, 0.92));
+  border: 1px solid rgba(209, 100, 66, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 12px 22px rgba(181, 74, 40, 0.08);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
 button {
   appearance: none;
   border: 0;

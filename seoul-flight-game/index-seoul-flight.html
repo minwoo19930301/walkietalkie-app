@@ -3,18 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>SEOUL AIR TOUR</title>
+    <title>SEOUL AIR TOUR VIEWER</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Orbitron:wght@500;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./seoul-flight.css?v=2" />
+    <link rel="stylesheet" href="./seoul-flight.css?v=3" />
   </head>
   <body>
     <main id="app">
-      <section id="game-root" aria-label="서울 3D 비행 게임"></section>
+      <section id="game-root" aria-label="서울 3D 비행 뷰어"></section>
 
       <div id="vignette" aria-hidden="true"></div>
 
@@ -43,16 +43,16 @@
           <span class="unit" id="heading-cardinal">N</span>
         </div>
         <div class="stat">
-          <span class="label">TIME</span>
+          <span class="label">VIEW</span>
           <strong id="timer-value">00:00</strong>
-          <span class="unit">tour</span>
+          <span class="unit">live</span>
         </div>
       </section>
 
       <section class="panel mission-panel">
         <div class="mission-row">
-          <span class="label">NEXT</span>
-          <strong id="target-name">63 빌딩</strong>
+          <span class="label">FOCUS</span>
+          <strong id="target-name">63빌딩</strong>
         </div>
         <div class="mission-row">
           <span class="label">DIST</span>
@@ -62,7 +62,7 @@
           <span class="label">BEARING</span>
           <strong id="bearing-value">0°</strong>
         </div>
-        <p id="status-text">엔진 시동 전. 코스를 확인하세요.</p>
+        <p id="status-text">서울 상공 뷰를 준비 중입니다.</p>
         <canvas id="mini-map" width="240" height="176" aria-label="서울 경로 미니맵"></canvas>
       </section>
 
@@ -71,7 +71,6 @@
         <div class="ring ring-sm"></div>
         <div class="crosshair horizontal"></div>
         <div class="crosshair vertical"></div>
-        <div id="nav-needle"></div>
       </section>
 
       <section id="cockpit-shell" aria-hidden="true">
@@ -97,10 +96,10 @@
 
       <section class="panel controls-panel">
         <div class="control-line">화면 클릭 후 마우스로 시점/방향 조종</div>
-        <div class="control-line">W/S 보조 기수 올림/내림</div>
-        <div class="control-line">A/D 보조 뱅크, Q/E 러더</div>
-        <div class="control-line">Shift 부스트, Space 수평 복귀</div>
-        <div class="control-line">R 재이륙</div>
+        <div class="control-line">W/S 느리게 상승/하강</div>
+        <div class="control-line">A/D 좌우 기울기, Q/E 러더</div>
+        <div class="control-line">Shift 가속, Space 수평 복귀</div>
+        <div class="control-line">R 처음 위치로</div>
       </section>
 
       <div id="map-credit">Map data</div>
@@ -117,28 +116,28 @@
       </section>
 
       <section id="start-panel" class="overlay-card">
-        <div class="overlay-eyebrow">SEOUL SKYLINE COURSE</div>
-        <h2>한강 상공 투어를 시작합니다.</h2>
+        <div class="overlay-eyebrow">SEOUL AIR TOUR VIEWER</div>
+        <h2>서울 상공 뷰를 시작합니다.</h2>
         <p>
-          서울 실제 도로, 한강, 주행 경로, 건물 풋프린트 데이터를 바탕으로 만든 코스입니다. 63빌딩, 경복궁,
-          N서울타워, COEX, 롯데월드타워 체크포인트를 순서대로 통과하세요.
+          서울 실제 도로, 한강, 주행 경로, 건물 풋프린트 데이터를 바탕으로 만든 1인칭 비행 뷰어입니다.
+          63빌딩, 경복궁, N서울타워, COEX, 롯데월드타워 방향을 차례대로 안내합니다.
         </p>
         <div class="overlay-notes">
           <div>시작 후 화면을 클릭하면 마우스 보는 방향으로 비행합니다.</div>
-          <div>지면에 닿으면 자동으로 띄워주고, 건물에만 충돌합니다.</div>
-          <div>다음 체크포인트는 HUD와 중앙 내비게이션 화살표로 안내됩니다.</div>
+          <div>지면과 건물은 보기용이며 충돌 판정 없이 통과합니다.</div>
+          <div>실제 경로는 미니맵과 지면에서만 참고용으로 보입니다.</div>
         </div>
-        <button id="start-btn" type="button">엔진 시동</button>
+        <button id="start-btn" type="button">둘러보기 시작</button>
       </section>
 
       <section id="message-panel" class="overlay-card hidden">
         <div class="overlay-eyebrow" id="message-tag">STATUS</div>
-        <h2 id="message-title">투어 종료</h2>
+        <h2 id="message-title">안내</h2>
         <p id="message-body"></p>
-        <button id="restart-btn" type="button">다시 이륙</button>
+        <button id="restart-btn" type="button">처음 위치로</button>
       </section>
     </main>
 
-    <script type="module" src="./seoul-flight.mjs?v=4"></script>
+    <script type="module" src="./seoul-flight.mjs?v=5"></script>
   </body>
 </html>

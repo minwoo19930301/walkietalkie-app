@@ -242,20 +242,6 @@ body {
   background: linear-gradient(180deg, transparent, rgba(130, 229, 255, 0.85), transparent);
 }
 
-#nav-needle {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 0;
-  height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 18px solid var(--accent-hot);
-  filter: drop-shadow(0 0 8px rgba(255, 183, 109, 0.55));
-  transform: translate(-50%, -50%) rotate(0deg) translateY(-64px);
-  transform-origin: center center;
-}
-
 #horizon {
   position: absolute;
   left: 50%;

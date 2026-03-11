@@ -19,7 +19,6 @@ const dom = {
   messageBody: document.getElementById("message-body"),
   restartBtn: document.getElementById("restart-btn"),
   horizonInner: document.getElementById("horizon-inner"),
-  navNeedle: document.getElementById("nav-needle"),
   mapCredit: document.getElementById("map-credit"),
   miniMap: document.getElementById("mini-map"),
   touchButtons: Array.from(document.querySelectorAll("[data-control]")),
@@ -105,7 +104,7 @@ const runtime = {
   miniMapBase: null,
   pointerLocked: false,
   lookRollVelocity: 0,
-  currentStatus: "엔진 시동 전. 코스를 확인하세요.",
+  currentStatus: "서울 상공 뷰를 준비 중입니다.",
 };
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -219,11 +218,11 @@ function configureSeoulMap(mapData) {
   ];
 
   checkpointDefs = [
-    { name: "63빌딩", y: 220, radius: 68, note: "실제 여의도 코스 진입", ...landmarkPositions.sixtythree },
-    { name: "경복궁", y: 252, radius: 76, note: "종로 북쪽 회전", ...landmarkPositions.gyeongbokgung },
-    { name: "N서울타워", y: 330, radius: 84, note: "남산 상공 통과", ...landmarkPositions.nseoul },
-    { name: "COEX", y: 262, radius: 82, note: "실제 강남 업무지구", ...landmarkPositions.coex },
-    { name: "롯데월드타워", y: 388, radius: 92, note: "잠실 피니시", ...landmarkPositions.lotte },
+    { name: "63빌딩", y: 220, radius: 68, note: "여의도 구간을 보는 중입니다.", ...landmarkPositions.sixtythree },
+    { name: "경복궁", y: 252, radius: 76, note: "종로 북쪽 구간을 보는 중입니다.", ...landmarkPositions.gyeongbokgung },
+    { name: "N서울타워", y: 330, radius: 84, note: "남산 상공을 보는 중입니다.", ...landmarkPositions.nseoul },
+    { name: "COEX", y: 262, radius: 82, note: "강남 업무지구를 보는 중입니다.", ...landmarkPositions.coex },
+    { name: "롯데월드타워", y: 388, radius: 92, note: "잠실 구간을 보는 중입니다.", ...landmarkPositions.lotte },
   ];
 
   noBuildZones = landmarkDefs.map((landmark) => ({
@@ -323,7 +322,6 @@ function buildWorld() {
   createActualBuildings(scene);
   createLandmarks(scene);
   createBridges(scene);
-  createNavigationRoute(scene);
   createCheckpoints(scene);
   createClouds(scene);
 }
@@ -692,45 +690,6 @@ function pickBuildingMaterial(building) {
     return buildingMaterials[0];
   }
   return buildingMaterials[2];
-}
-
-function createNavigationRoute(scene) {
-  const routePoints = sampleRoutePoints(runtime.projectedMap.route, 6).map(([x, z]) => (
-    new THREE.Vector3(x, getTerrainHeight(x, z) + 72, z)
-  ));
-
-  if (routePoints.length < 2) {
-    return;
-  }
-
-  const curve = new THREE.CatmullRomCurve3(routePoints, false, "centripetal", 0.2);
-  const tubeSegments = Math.max(220, routePoints.length * 4);
-
-  const outer = new THREE.Mesh(
-    new THREE.TubeGeometry(curve, tubeSegments, 11, 10, false),
-    new THREE.MeshBasicMaterial({
-      color: 0xff9a5b,
-      transparent: true,
-      opacity: 0.2,
-      depthTest: false,
-      depthWrite: false,
-    }),
-  );
-  outer.renderOrder = 3;
-  scene.add(outer);
-
-  const inner = new THREE.Mesh(
-    new THREE.TubeGeometry(curve, tubeSegments, 4.4, 10, false),
-    new THREE.MeshBasicMaterial({
-      color: 0xffe4b6,
-      transparent: true,
-      opacity: 0.8,
-      depthTest: false,
-      depthWrite: false,
-    }),
-  );
-  inner.renderOrder = 4;
-  scene.add(inner);
 }
 
 function createLandmarks(scene) {
@@ -1116,10 +1075,10 @@ function handleMouseMove(event) {
     return;
   }
 
-  state.yaw += event.movementX * 0.0022;
+  state.yaw -= event.movementX * 0.0022;
   state.pitch -= event.movementY * 0.0016;
   state.pitch = THREE.MathUtils.clamp(state.pitch, -0.48, 0.58);
-  runtime.lookRollVelocity = THREE.MathUtils.clamp(event.movementX * -0.0026, -0.45, 0.45);
+  runtime.lookRollVelocity = THREE.MathUtils.clamp(event.movementX * 0.0026, -0.45, 0.45);
 }
 
 function onResize() {
@@ -1189,12 +1148,12 @@ function resetFlight() {
   state.yaw = Math.atan2(firstCheckpoint.x - startX, -(firstCheckpoint.z - startZ));
   state.pitch = -0.18;
   state.roll = 0;
-  state.speed = 136;
+  state.speed = 45;
   state.elapsedMs = 0;
   state.startedAt = 0;
   state.checkpointIndex = 0;
 
-  runtime.currentStatus = "엔진 시동 전. 코스를 확인하세요.";
+  runtime.currentStatus = "서울 상공 뷰 준비 완료. 시작하면 바로 이동합니다.";
   dom.startPanel.classList.remove("hidden");
   dom.messagePanel.classList.add("hidden");
   updateCheckpointVisuals();
@@ -1240,7 +1199,7 @@ function updateFlight(delta) {
   const bankInput = Number(input.bankRight) - Number(input.bankLeft);
   const yawInput = Number(input.yawRight) - Number(input.yawLeft);
 
-  const targetSpeed = input.boost ? 232 : 146;
+  const targetSpeed = input.boost ? 77 : 49;
   state.speed = THREE.MathUtils.damp(state.speed, targetSpeed, 2.1, delta);
 
   const pitchSpeed = input.level ? 0.16 : 0.82;
@@ -1287,9 +1246,6 @@ function updateFlight(delta) {
   }
 
   enforceBoundary(delta);
-  if (detectObstacleCollision()) {
-    return;
-  }
   updateCamera(delta);
 }
 
@@ -1340,7 +1296,7 @@ function updateCheckpoints(now) {
       return;
     }
 
-    runtime.currentStatus = `${checkpointDefs[state.checkpointIndex].name} 방향으로 선회하세요.`;
+    runtime.currentStatus = `${checkpointDefs[state.checkpointIndex].name} 방향으로 이동 중.`;
   } else {
     const relative = getRelativeBearing(current);
     if (!runtime.pointerLocked && window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches) {
@@ -1348,7 +1304,7 @@ function updateCheckpoints(now) {
     } else if (state.position.y < getTerrainHeight(state.position.x, state.position.z) + 56) {
       runtime.currentStatus = "저고도 경고. 기수를 올리세요.";
     } else if (Math.abs(relative) > 65) {
-      runtime.currentStatus = "다음 체크포인트 방향으로 선회 중.";
+      runtime.currentStatus = "다음 랜드마크 방향으로 이동 중.";
     } else if (input.boost) {
       runtime.currentStatus = "부스트 사용 중. 고도 유지에 주의하세요.";
     } else {
@@ -1383,9 +1339,9 @@ function updateCheckpointVisuals() {
       item.beam.material.color.setHex(0x88f2a1);
       item.label.material.opacity = 0.82;
     } else if (item.index === state.checkpointIndex) {
-      item.ring.material.color.setHex(0xffcd76);
+      item.ring.material.color.setHex(0xb6f2ff);
       item.ring.material.opacity = 0.95;
-      item.beam.material.color.setHex(0xffcd76);
+      item.beam.material.color.setHex(0xb6f2ff);
       item.label.material.opacity = 1;
     } else {
       item.ring.material.color.setHex(0x8ceeff);
@@ -1407,54 +1363,17 @@ function updateHud() {
   dom.headingValue.textContent = String(Math.round(headingDegrees)).padStart(3, "0");
   dom.headingCardinal.textContent = getCardinal(headingDegrees);
   dom.timerValue.textContent = formatTime(state.elapsedMs);
-  dom.targetName.textContent = current ? current.name : "투어 완료";
+  dom.targetName.textContent = current ? current.name : "서울 상공";
   dom.distanceValue.textContent = `${Math.round(distance)}m`;
   dom.bearingValue.textContent = `${Math.round(relativeBearing)}°`;
   dom.statusText.textContent = runtime.currentStatus;
   dom.horizonInner.style.transform = `translateY(${state.pitch * 120}px) rotate(${(-state.roll * 180) / Math.PI}deg)`;
-  dom.navNeedle.style.transform = `translate(-50%, -50%) rotate(${relativeBearing}deg) translateY(-64px)`;
   drawMiniMap();
 }
 
 function finishRun() {
-  clearInputs();
-  state.mode = "complete";
-  dom.messageTag.textContent = "MISSION CLEAR";
-  dom.messageTitle.textContent = "서울 상공 투어 완료";
-  dom.messageBody.textContent = `${formatTime(state.elapsedMs)} 만에 모든 체크포인트를 통과했습니다. 다시 이륙하면 코스를 처음부터 재시작합니다.`;
-  dom.messagePanel.classList.remove("hidden");
-  runtime.currentStatus = "모든 랜드마크 체크포인트 통과 완료.";
-}
-
-function triggerCrash(message) {
-  clearInputs();
-  state.mode = "crashed";
-  dom.messageTag.textContent = "CRASH";
-  dom.messageTitle.textContent = "비행 종료";
-  dom.messageBody.textContent = `${message} R 키 또는 버튼으로 즉시 재이륙할 수 있습니다.`;
-  dom.messagePanel.classList.remove("hidden");
-  runtime.currentStatus = "충돌. 재이륙 준비 중.";
-}
-
-function detectObstacleCollision() {
-  for (const obstacle of runtime.obstacles) {
-    if (state.position.y >= obstacle.height + 10) {
-      continue;
-    }
-
-    const distance = horizontalDistance(state.position.x, state.position.z, obstacle.x, obstacle.z);
-    if (distance >= obstacle.radius) {
-      continue;
-    }
-
-    if (obstacle.type === "polygon" && !isPointInPolygon(state.position.x, state.position.z, obstacle.points)) {
-      continue;
-    }
-
-    triggerCrash("도심 건축물과 충돌했습니다.");
-    return true;
-  }
-  return false;
+  state.checkpointIndex = checkpointDefs.length - 1;
+  runtime.currentStatus = "주요 랜드마크 안내를 모두 지났습니다.";
 }
 
 function enforceBoundary(delta) {
@@ -1473,7 +1392,7 @@ function enforceBoundary(delta) {
   const desired = Math.atan2(-state.position.x, state.position.z);
   const deltaAngle = shortestAngle(state.yaw, desired);
   state.yaw += deltaAngle * Math.min(1, delta * 1.8);
-  runtime.currentStatus = "서울 지도 경계 접근. 코스 안쪽으로 복귀 중.";
+  runtime.currentStatus = "서울 지도 경계 접근. 지도 안쪽으로 복귀 중.";
 }
 
 function getTerrainHeight(x, z) {
@@ -1637,7 +1556,7 @@ function drawMiniMap() {
 
   checkpointDefs.forEach((checkpoint, index) => {
     const point = worldToTexture(checkpoint.x, checkpoint.z, dom.miniMap);
-    ctx.fillStyle = index < state.checkpointIndex ? "#8ff0a4" : index === state.checkpointIndex ? "#ffcd76" : "rgba(140, 238, 255, 0.78)";
+    ctx.fillStyle = index < state.checkpointIndex ? "#8ff0a4" : index === state.checkpointIndex ? "#b6f2ff" : "rgba(140, 238, 255, 0.78)";
     ctx.beginPath();
     ctx.arc(point.x, point.y, index === state.checkpointIndex ? 5 : 3.2, 0, Math.PI * 2);
     ctx.fill();

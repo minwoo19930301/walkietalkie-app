@@ -1,4 +1,4 @@
-# Seoul Flight Game
+# Seoul Air Tour Viewer
 
 ## 실행
 
@@ -10,6 +10,7 @@ python3 -m http.server 5174 --bind 127.0.0.1 --directory "/Users/minwokim/Docume
 
 ## 배포
 
+- 바로 보기: `https://minwoo19930301.github.io/seoul-flight-game/`
 - 배포 저장소: `https://github.com/minwoo19930301/seoul-flight-game`
 - 배포 URL: `https://minwoo19930301.github.io/seoul-flight-game/`
 
@@ -17,20 +18,20 @@ python3 -m http.server 5174 --bind 127.0.0.1 --directory "/Users/minwokim/Docume
 
 - 실제 서울 도로/하천/주행 경로/건물 풋프린트 데이터 기반 미니맵 + 지면 텍스처
 - 실제 OSM 래스터 타일 기반 바닥/미니맵
-- 실제 경로를 따라 뜨는 3D 내비게이션 라인
-- 체크포인트: `63빌딩 -> 경복궁 -> N서울타워 -> COEX -> 롯데월드타워`
+- 랜드마크 순서 안내: `63빌딩 -> 경복궁 -> N서울타워 -> COEX -> 롯데월드타워`
 - 1인칭 조종석 오버레이
 - 마우스 시점 조종 + 키보드 보조 조작
+- 지면/건물 충돌 없이 서울 상공을 천천히 둘러보는 비행 뷰어
 
 ## 조작
 
 - 화면 클릭: 마우스 시점/방향 조종
-- `W/S`: 보조 기수 올림/내림
-- `A/D`: 보조 뱅크
+- `W/S`: 느리게 상승/하강
+- `A/D`: 좌우 기울기
 - `Q/E`: 보조 러더
-- `Shift`: 부스트
+- `Shift`: 가속
 - `Space`: 수평 복귀
-- `R`: 재이륙
+- `R`: 처음 위치
 
 ## 데이터
 

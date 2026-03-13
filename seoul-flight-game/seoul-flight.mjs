@@ -97,6 +97,7 @@ const runtime = {
   checkpointGroups: [],
   clouds: [],
   riverSamples: [],
+  waterMasks: [],
   boundaryBeacons: [],
   projectedMap: null,
   rasterMapImage: null,
@@ -194,6 +195,23 @@ function configureSeoulMap(mapData) {
     route: projectLine(mapData.route.points, project),
     buildings: mapData.buildings.map((building) => projectBuilding(building, project)).filter(Boolean),
   };
+
+  runtime.waterMasks = runtime.projectedMap.waterPolygons
+    .filter((polygon) => polygon.length >= 3)
+    .map((polygon) => {
+      const bounds = polygonBounds(polygon);
+      const signedArea = polygonSignedArea(polygon);
+      const anchor = polygonCentroid(polygon, signedArea);
+      return {
+        points: polygon,
+        minX: bounds.minX,
+        maxX: bounds.maxX,
+        minZ: bounds.minZ,
+        maxZ: bounds.maxZ,
+        anchorX: anchor.x,
+        anchorZ: anchor.z,
+      };
+    });
 
   riverPath = pickLongestLine(runtime.projectedMap.waterLines).map(([x, z]) => new THREE.Vector2(x, z));
   if (riverPath.length < 2) {
@@ -598,7 +616,7 @@ function createActualBuildings(scene) {
   };
 
   runtime.projectedMap.buildings.forEach((building) => {
-    if (isInsideLandmarkClearance(building)) {
+    if (isInsideLandmarkClearance(building) || isBuildingOnWater(building)) {
       return;
     }
 
@@ -1439,6 +1457,42 @@ function isInsideLandmarkClearance(building) {
   ));
 }
 
+function isBuildingOnWater(building) {
+  const margin = 2;
+  for (const water of runtime.waterMasks) {
+    if (!rectanglesOverlap(
+      building.footprintMinX,
+      building.footprintMaxX,
+      building.footprintMinZ,
+      building.footprintMaxZ,
+      water.minX,
+      water.maxX,
+      water.minZ,
+      water.maxZ,
+      margin,
+    )) {
+      continue;
+    }
+
+    if (isPointInPolygon(building.x, building.z, water.points)) {
+      return true;
+    }
+
+    const step = Math.max(1, Math.floor(building.points.length / 7));
+    for (let index = 0; index < building.points.length; index += step) {
+      const [x, z] = building.points[index];
+      if (isPointInPolygon(x, z, water.points)) {
+        return true;
+      }
+    }
+
+    if (isPointInPolygon(water.anchorX, water.anchorZ, building.points)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function isPointInPolygon(x, z, points) {
   let inside = false;
   for (let index = 0, previous = points.length - 1; index < points.length; previous = index, index += 1) {
@@ -1451,6 +1505,15 @@ function isPointInPolygon(x, z, points) {
     }
   }
   return inside;
+}
+
+function rectanglesOverlap(minX1, maxX1, minZ1, maxZ1, minX2, maxX2, minZ2, maxZ2, margin = 0) {
+  return !(
+    maxX1 < minX2 - margin
+    || minX1 > maxX2 + margin
+    || maxZ1 < minZ2 - margin
+    || minZ1 > maxZ2 + margin
+  );
 }
 
 function getRelativeBearing(target) {
@@ -1649,6 +1712,10 @@ function projectBuilding(building, project) {
     footprintArea,
     footprintWidth: Math.max(4, maxX - minX),
     footprintDepth: Math.max(4, maxZ - minZ),
+    footprintMinX: minX,
+    footprintMaxX: maxX,
+    footprintMinZ: minZ,
+    footprintMaxZ: maxZ,
     x: centroid.x,
     z: centroid.z,
     radius: Math.max(radius, 10),
@@ -1708,6 +1775,22 @@ function polygonSignedArea(points) {
     area += x1 * z2 - x2 * z1;
   }
   return area * 0.5;
+}
+
+function polygonBounds(points) {
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+
+  points.forEach(([x, z]) => {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
+  });
+
+  return { minX, maxX, minZ, maxZ };
 }
 
 function polygonCentroid(points, signedArea = polygonSignedArea(points)) {

@@ -17,6 +17,7 @@ python3 -m http.server 5174 --bind 127.0.0.1 --directory "/Users/minwokim/Docume
 ## 구성
 
 - 실제 서울 도로/하천/주행 경로/건물 풋프린트 데이터 기반 미니맵 + 지면 텍스처
+- 실제 OSM 건물 약 6.9만 동(아파트/주거 포함) 기반 3D 배치
 - 실제 OSM 래스터 타일 기반 바닥/미니맵
 - 랜드마크 순서 안내: `63빌딩 -> 경복궁 -> N서울타워 -> COEX -> 롯데월드타워`
 - 1인칭 조종석 오버레이
@@ -48,3 +49,7 @@ python3 -m http.server 5174 --bind 127.0.0.1 --directory "/Users/minwokim/Docume
 래스터 베이스맵 재생성:
 
 - `python3 scripts/build-osm-raster-map.py`
+
+건물 데이터 재생성:
+
+- `node scripts/rebuild-seoul-scene-buildings.mjs --osm /tmp/seoul_buildings_full_raw.json --out assets/seoul-scene-data.json --min-area 10`

@@ -94,7 +94,6 @@ const runtime = {
   sun: null,
   cockpitLight: null,
   lastTime: performance.now(),
-  obstacles: [],
   checkpointGroups: [],
   clouds: [],
   riverSamples: [],
@@ -359,21 +358,6 @@ function buildMiniMapBase() {
     map.roads.primary.forEach((line) => drawMiniMapLine(ctx, base, line, 2.2, "rgba(255, 224, 157, 0.15)"));
     map.roads.trunk.forEach((line) => drawMiniMapLine(ctx, base, line, 3, "rgba(255, 200, 120, 0.24)"));
   }
-  ctx.save();
-  ctx.shadowBlur = 16;
-  ctx.shadowColor = "rgba(255, 194, 112, 0.42)";
-  drawMiniMapLine(ctx, base, map.route, 7, "rgba(255, 152, 92, 0.34)");
-  drawMiniMapLine(ctx, base, map.route, 3.2, "rgba(255, 227, 170, 0.92)");
-  ctx.restore();
-
-  landmarkDefs.forEach((landmark) => {
-    const point = worldToTexture(landmark.x, landmark.z, base);
-    ctx.fillStyle = "rgba(255, 212, 136, 0.92)";
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, 3.4, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
   runtime.miniMapBase = base;
 }
 
@@ -453,14 +437,6 @@ function createGroundTexture() {
   }
 
   ctx.save();
-  ctx.shadowBlur = 34;
-  ctx.shadowColor = "rgba(255, 186, 118, 0.52)";
-  drawProjectedLine(ctx, canvas, map.route, 28, "rgba(255, 154, 84, 0.12)");
-  drawProjectedLine(ctx, canvas, map.route, 14, "rgba(255, 184, 118, 0.28)");
-  drawProjectedLine(ctx, canvas, map.route, 5, "rgba(255, 237, 198, 0.8)");
-  ctx.restore();
-
-  ctx.save();
   ctx.shadowBlur = 18;
   ctx.shadowColor = "rgba(255, 247, 214, 0.2)";
   bridgeDefs.forEach((bridge) => {
@@ -489,21 +465,6 @@ function createGroundTexture() {
   if (riverMid) {
     placeLabel(ctx, canvas, "HAN RIVER", riverMid.x, riverMid.y, "rgba(220, 249, 255, 0.78)");
   }
-  const routeMid = map.route[Math.floor(map.route.length * 0.56)];
-  if (routeMid) {
-    placeLabel(ctx, canvas, "NAV ROUTE", routeMid[0], routeMid[1] - 48, "rgba(255, 232, 186, 0.58)");
-  }
-
-  landmarkDefs.forEach((landmark) => {
-    const point = worldToTexture(landmark.x, landmark.z, canvas);
-    ctx.fillStyle = "rgba(255, 210, 133, 0.95)";
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, 9, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  });
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.anisotropy = runtime.renderer.capabilities.getMaxAnisotropy();
@@ -629,30 +590,145 @@ function createBoundarySkyline(scene) {
 
 function createActualBuildings(scene) {
   const city = new THREE.Group();
+  const candidates = [];
+  const instancedBuckets = {
+    residential: [],
+    commercial: [],
+    mixed: [],
+  };
 
   runtime.projectedMap.buildings.forEach((building) => {
-    if (isNearRiver(building.x, building.z, riverWidth * 0.42) || isInsideLandmarkClearance(building)) {
+    if (isInsideLandmarkClearance(building)) {
       return;
     }
 
-    const terrainHeight = getTerrainHeight(building.x, building.z);
-    const mesh = createBuildingMesh(building, terrainHeight);
-    if (!mesh) {
-      return;
-    }
-
-    city.add(mesh);
-    runtime.obstacles.push({
-      type: "polygon",
-      x: building.x,
-      z: building.z,
-      radius: building.radius,
-      height: terrainHeight + building.height,
-      points: building.points,
+    candidates.push({
+      building,
+      terrainHeight: getTerrainHeight(building.x, building.z),
+      detailScore: getBuildingDetailScore(building),
     });
   });
 
+  candidates.sort((left, right) => right.detailScore - left.detailScore);
+  const detailLimit = getDetailBuildingLimit(candidates.length);
+
+  candidates.forEach((candidate, index) => {
+    const shouldUseDetailedMesh = index < detailLimit
+      && candidate.building.points.length <= 52
+      && candidate.building.footprintArea >= 80;
+
+    if (shouldUseDetailedMesh) {
+      const mesh = createBuildingMesh(candidate.building, candidate.terrainHeight);
+      if (mesh) {
+        city.add(mesh);
+        return;
+      }
+    }
+
+    enqueueInstancedBuilding(instancedBuckets, candidate);
+  });
+
+  createInstancedBuildingGroups(city, instancedBuckets);
   scene.add(city);
+}
+
+function getBuildingDetailScore(building) {
+  const heightFactor = 1 + building.height * 0.012;
+  const areaFactor = Math.max(building.footprintArea, 40);
+  const kindFactor = (
+    building.kind === "apartments" || building.kind === "residential" || building.kind === "house"
+      ? 1.1
+      : building.kind === "office" || building.kind === "commercial"
+        ? 1.14
+        : 1
+  );
+  return areaFactor * heightFactor * kindFactor;
+}
+
+function getDetailBuildingLimit(totalBuildings) {
+  if (totalBuildings >= 90000) {
+    return 1200;
+  }
+  if (totalBuildings >= 60000) {
+    return 1450;
+  }
+  if (totalBuildings >= 30000) {
+    return 1800;
+  }
+  return 2200;
+}
+
+function enqueueInstancedBuilding(buckets, candidate) {
+  const { building, terrainHeight } = candidate;
+  const width = THREE.MathUtils.clamp(building.footprintWidth * 0.94, 5, 210);
+  const depth = THREE.MathUtils.clamp(building.footprintDepth * 0.94, 5, 210);
+  const height = THREE.MathUtils.clamp(building.height, 6, 320);
+
+  const key = building.kind === "apartments" || building.kind === "residential" || building.kind === "house"
+    ? "residential"
+    : building.kind === "office" || building.kind === "commercial" || building.kind === "hotel"
+      ? "commercial"
+      : "mixed";
+
+  buckets[key].push({
+    x: building.x,
+    y: terrainHeight + height * 0.5,
+    z: building.z,
+    width,
+    depth,
+    height,
+  });
+}
+
+function createInstancedBuildingGroups(group, buckets) {
+  const materials = {
+    residential: new THREE.MeshStandardMaterial({
+      color: 0xbcc7d3,
+      roughness: 0.84,
+      metalness: 0.12,
+      emissive: 0x122133,
+      emissiveIntensity: 0.09,
+    }),
+    commercial: new THREE.MeshStandardMaterial({
+      color: 0xa7bdd0,
+      roughness: 0.56,
+      metalness: 0.34,
+      emissive: 0x152843,
+      emissiveIntensity: 0.16,
+    }),
+    mixed: new THREE.MeshStandardMaterial({
+      color: 0xa3b0be,
+      roughness: 0.7,
+      metalness: 0.18,
+      emissive: 0x141f2e,
+      emissiveIntensity: 0.11,
+    }),
+  };
+
+  const matrix = new THREE.Matrix4();
+  const quaternion = new THREE.Quaternion();
+  const position = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+
+  Object.entries(buckets).forEach(([key, buildings]) => {
+    if (!buildings.length) {
+      return;
+    }
+
+    const mesh = new THREE.InstancedMesh(shared.box, materials[key], buildings.length);
+    mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+
+    buildings.forEach((item, index) => {
+      position.set(item.x, item.y, item.z);
+      scale.set(item.width, item.height, item.depth);
+      matrix.compose(position, quaternion, scale);
+      mesh.setMatrixAt(index, matrix);
+    });
+
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  });
 }
 
 function createBuildingMesh(building, terrainHeight) {
@@ -702,13 +778,6 @@ function createLandmarks(scene) {
     const label = createLabelSprite(landmark.label, "#dcf5ff");
     label.position.set(landmark.x, terrainHeight + landmark.height + 32, landmark.z);
     scene.add(label);
-
-    runtime.obstacles.push({
-      x: landmark.x,
-      z: landmark.z,
-      radius: landmark.colliderRadius,
-      height: terrainHeight + landmark.height + 4,
-    });
   });
 }
 
@@ -746,51 +815,8 @@ function createBridges(scene) {
 }
 
 function createCheckpoints(scene) {
-  checkpointDefs.forEach((checkpoint, index) => {
-    const group = new THREE.Group();
-
-    const ringMaterial = new THREE.MeshStandardMaterial({
-      color: 0x8ceeff,
-      emissive: 0x39a4ff,
-      emissiveIntensity: 0.9,
-      roughness: 0.2,
-      metalness: 0.35,
-      transparent: true,
-      opacity: 0.92,
-    });
-
-    const ring = new THREE.Mesh(shared.towerRing, ringMaterial);
-    ring.scale.setScalar(checkpoint.radius);
-    ring.rotation.y = Math.PI / 2;
-    group.add(ring);
-
-    const beamMaterial = new THREE.MeshBasicMaterial({
-      color: 0x7ee7ff,
-      transparent: true,
-      opacity: 0.22,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    const beam = new THREE.Mesh(shared.beam, beamMaterial);
-    beam.position.y = checkpoint.y * 0.5;
-    beam.scale.set(checkpoint.radius * 0.23, checkpoint.y, checkpoint.radius * 0.23);
-    group.add(beam);
-
-    const glow = new THREE.PointLight(0x66d7ff, 1.4, 460, 2);
-    glow.position.set(0, 0, 0);
-    group.add(glow);
-
-    const label = createLabelSprite(checkpoint.name, "#fff4d4");
-    label.position.set(0, 44, 0);
-    group.add(label);
-
-    group.position.set(checkpoint.x, checkpoint.y, checkpoint.z);
-    scene.add(group);
-
-    runtime.checkpointGroups.push({ group, ring, beam, glow, label, checkpoint, index });
-  });
-
-  updateCheckpointVisuals();
+  void scene;
+  runtime.checkpointGroups = [];
 }
 
 function createClouds(scene) {
@@ -1407,14 +1433,6 @@ function getTerrainHeight(x, z) {
   return height;
 }
 
-function isNearRiver(x, z, threshold) {
-  return runtime.riverSamples.some((point) => horizontalDistance(x, z, point.x, point.y) < threshold);
-}
-
-function isInNoBuildZone(x, z) {
-  return noBuildZones.some((zone) => horizontalDistance(x, z, zone.x, zone.z) < zone.radius);
-}
-
 function isInsideLandmarkClearance(building) {
   return landmarkDefs.some((landmark) => (
     horizontalDistance(building.x, building.z, landmark.x, landmark.z) < Math.max(22, landmark.colliderRadius * 0.72)
@@ -1554,14 +1572,6 @@ function drawMiniMap() {
   ctx.clearRect(0, 0, dom.miniMap.width, dom.miniMap.height);
   ctx.drawImage(runtime.miniMapBase, 0, 0);
 
-  checkpointDefs.forEach((checkpoint, index) => {
-    const point = worldToTexture(checkpoint.x, checkpoint.z, dom.miniMap);
-    ctx.fillStyle = index < state.checkpointIndex ? "#8ff0a4" : index === state.checkpointIndex ? "#b6f2ff" : "rgba(140, 238, 255, 0.78)";
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, index === state.checkpointIndex ? 5 : 3.2, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
   const player = worldToTexture(state.position.x, state.position.z, dom.miniMap);
   const heading = getHeadingRadians();
   ctx.save();
@@ -1618,8 +1628,17 @@ function projectBuilding(building, project) {
   }
 
   const centroid = polygonCentroid(points, signedArea);
+  const footprintArea = Math.abs(signedArea);
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
   let radius = 0;
   points.forEach(([x, z]) => {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
     radius = Math.max(radius, horizontalDistance(x, z, centroid.x, centroid.z));
   });
 
@@ -1627,6 +1646,9 @@ function projectBuilding(building, project) {
     ...building,
     points,
     height: normalizeBuildingHeight(building),
+    footprintArea,
+    footprintWidth: Math.max(4, maxX - minX),
+    footprintDepth: Math.max(4, maxZ - minZ),
     x: centroid.x,
     z: centroid.z,
     radius: Math.max(radius, 10),

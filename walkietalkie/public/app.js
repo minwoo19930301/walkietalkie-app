@@ -5,6 +5,7 @@ const elements = {
   setupView: document.querySelector("#setupView"),
   callView: document.querySelector("#callView"),
   waitingModal: document.querySelector("#waitingModal"),
+  connectionHelpModal: document.querySelector("#connectionHelpModal"),
   inviteLink: document.querySelector("#inviteLink"),
   setupStatusText: document.querySelector("#setupStatusText"),
   inviteBtn: document.querySelector("#inviteBtn"),
@@ -12,6 +13,9 @@ const elements = {
   copyInviteBtn: document.querySelector("#copyInviteBtn"),
   regenerateLinkBtn: document.querySelector("#regenerateLinkBtn"),
   closeWaitingModalBtn: document.querySelector("#closeWaitingModalBtn"),
+  closeConnectionHelpBtn: document.querySelector("#closeConnectionHelpBtn"),
+  dismissConnectionHelpBtn: document.querySelector("#dismissConnectionHelpBtn"),
+  retryConnectionBtn: document.querySelector("#retryConnectionBtn"),
   toggleMicBtn: document.querySelector("#toggleMicBtn"),
   toggleMicOff: document.querySelector("#toggleMicOff"),
   toggleMicText: document.querySelector("#toggleMicText"),
@@ -82,12 +86,20 @@ function bindEvents() {
   elements.copyInviteBtn.addEventListener("click", copyInviteLink)
   elements.regenerateLinkBtn.addEventListener("click", regenerateInviteLink)
   elements.closeWaitingModalBtn.addEventListener("click", closeWaitingModal)
+  elements.closeConnectionHelpBtn.addEventListener("click", closeConnectionHelpModal)
+  elements.dismissConnectionHelpBtn.addEventListener("click", closeConnectionHelpModal)
+  elements.retryConnectionBtn.addEventListener("click", retryCurrentCall)
   elements.leaveBtn.addEventListener("click", leaveCall)
   elements.toggleMicBtn.addEventListener("click", toggleMicrophone)
   elements.toggleCameraBtn.addEventListener("click", toggleCamera)
   elements.waitingModal.addEventListener("click", (event) => {
     if (event.target === elements.waitingModal) {
       closeWaitingModal()
+    }
+  })
+  elements.connectionHelpModal.addEventListener("click", (event) => {
+    if (event.target === elements.connectionHelpModal) {
+      closeConnectionHelpModal()
     }
   })
   window.addEventListener("hashchange", handleHashChange)
@@ -107,6 +119,7 @@ function bootstrap() {
   renderLocalPreviewState()
   renderRemoteState()
   hideWaitingModal({ manual: false })
+  hideConnectionHelpModal()
   setView("setup")
   setStatus("처음 들어오면 2초 뒤 링크를 만들고, 3초 뒤 통화 화면으로 전환됩니다.")
   updateControls()
@@ -546,6 +559,7 @@ async function ensurePeerConnection() {
     const nextState = connection.connectionState
 
     if (nextState === "connected") {
+      hideConnectionHelpModal()
       setStatus("통화 중입니다.")
     } else if (nextState === "connecting") {
       setStatus("통화 연결 중입니다.")
@@ -555,6 +569,7 @@ async function ensurePeerConnection() {
       setStatus(
         "직접 연결에 실패했습니다. 서로 다른 네트워크에서 다시 시도하거나 TURN을 추가해야 할 수 있습니다."
       )
+      openConnectionHelpModal()
     }
   })
 
@@ -699,6 +714,7 @@ function toggleCamera() {
 async function leaveCall() {
   state.isLeaving = true
   clearIntroTimers()
+  hideConnectionHelpModal()
 
   if (state.socket?.readyState === WebSocket.OPEN) {
     state.socket.close(1000, "User left")
@@ -740,6 +756,7 @@ async function hardReset({ returnToSetup = true } = {}) {
   elements.localVideo.srcObject = null
   elements.remoteVideo.srcObject = null
   hideWaitingModal({ manual: false })
+  hideConnectionHelpModal()
 
   if (returnToSetup) {
     setView("setup")
@@ -873,6 +890,19 @@ function hideWaitingModal({ manual = false } = {}) {
   elements.waitingModal.classList.add("hidden")
 }
 
+function openConnectionHelpModal() {
+  const shouldShow = document.body.dataset.view === "call"
+  elements.connectionHelpModal.classList.toggle("hidden", !shouldShow)
+}
+
+function closeConnectionHelpModal() {
+  hideConnectionHelpModal()
+}
+
+function hideConnectionHelpModal() {
+  elements.connectionHelpModal.classList.add("hidden")
+}
+
 function shouldShowWaitingModal() {
   return state.shouldShowShareModal && !state.peerName
 }
@@ -931,6 +961,13 @@ function clearIntroTimers() {
   }
 
   clearAutoEnterTimer()
+}
+
+async function retryCurrentCall() {
+  hideConnectionHelpModal()
+  setStatus("같은 링크로 다시 시도합니다...")
+  await hardReset({ returnToSetup: false })
+  await joinCall({ reuseCurrentView: true })
 }
 
 function peerLabel() {

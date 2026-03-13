@@ -1458,6 +1458,11 @@ function isInsideLandmarkClearance(building) {
 }
 
 function isBuildingOnWater(building) {
+  const riverThreshold = riverWidth * 0.46 + Math.min(building.radius * 0.24, 10);
+  if (isNearRiver(building.x, building.z, riverThreshold)) {
+    return true;
+  }
+
   const margin = 2;
   for (const water of runtime.waterMasks) {
     if (!rectanglesOverlap(
@@ -1487,6 +1492,15 @@ function isBuildingOnWater(building) {
     }
 
     if (isPointInPolygon(water.anchorX, water.anchorZ, building.points)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isNearRiver(x, z, threshold) {
+  for (const point of runtime.riverSamples) {
+    if (horizontalDistance(x, z, point.x, point.y) < threshold) {
       return true;
     }
   }

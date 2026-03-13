@@ -566,9 +566,7 @@ async function ensurePeerConnection() {
     } else if (nextState === "disconnected") {
       setStatus("연결이 잠시 불안정합니다.")
     } else if (nextState === "failed") {
-      setStatus(
-        "직접 연결에 실패했습니다. 서로 다른 네트워크에서 다시 시도하거나 TURN을 추가해야 할 수 있습니다."
-      )
+      setStatus("연결이 잘 되지 않습니다. 네트워크를 바꾸거나 잠시 후 다시 시도해 주세요.")
       openConnectionHelpModal()
     }
   })

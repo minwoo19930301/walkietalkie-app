@@ -45,6 +45,12 @@ const DEFAULT_ICE_SERVERS = [
   }
 ]
 
+const SOCKET_PING_INTERVAL_MS = 12000
+const SOCKET_PONG_TIMEOUT_MS = 30000
+const SIGNALING_RECONNECT_BASE_DELAY_MS = 1200
+const MAX_SIGNALING_RECONNECT_ATTEMPTS = 4
+const MAX_ICE_RESTART_ATTEMPTS = 2
+
 const clientId =
   sessionStorage.getItem(`${STORAGE_PREFIX}.clientId`) ?? `wt-${crypto.randomUUID()}`
 
@@ -61,6 +67,8 @@ const state = {
   pendingCandidates: [],
   shouldOffer: false,
   offerInFlight: false,
+  iceRestartAttempts: 0,
+  iceRestartInFlight: false,
   peerName: "",
   peerMedia: { ...DEFAULT_PEER_MEDIA },
   selfMedia: {
@@ -70,11 +78,18 @@ const state = {
   },
   iceServersPromise: null,
   isLeaving: false,
+  isResetting: false,
   isJoining: false,
+  socketPingTimer: null,
+  signalingReconnectTimer: null,
+  reconnectAttempts: 0,
+  lastPongAt: 0,
   inviteBootstrapTimer: null,
   autoEnterTimer: null,
   shouldShowShareModal: false,
-  waitingModalDismissed: false
+  waitingModalDismissed: false,
+  networkOnline: navigator.onLine,
+  wakeLock: null
 }
 
 bindEvents()
@@ -103,7 +118,12 @@ function bindEvents() {
     }
   })
   window.addEventListener("hashchange", handleHashChange)
+  window.addEventListener("online", handleNetworkOnline)
+  window.addEventListener("offline", handleNetworkOffline)
+  document.addEventListener("visibilitychange", handleVisibilityChange)
   window.addEventListener("beforeunload", () => {
+    stopSocketHeartbeat()
+    clearSignalingReconnectTimer()
     if (state.socket?.readyState === WebSocket.OPEN) {
       state.socket.close(1000, "Page unload")
     }
@@ -155,7 +175,9 @@ function handleHashChange() {
   }
 
   if (state.localStream || state.socket) {
-    replaceInviteHash(state.invite)
+    if (state.invite) {
+      replaceInviteHash(state.invite)
+    }
     setStatus("통화 중에는 링크를 바꿀 수 없습니다.")
     return
   }
@@ -284,13 +306,17 @@ async function joinCall(options = {}) {
   const { reuseCurrentView = false } = options
 
   clearIntroTimers()
+  clearSignalingReconnectTimer()
   state.isJoining = true
+  state.reconnectAttempts = 0
   setView("call")
+  hideConnectionHelpModal()
   setStatus("카메라와 마이크를 준비하고 있습니다...")
   updateControls(true)
 
   try {
     await prepareLocalMedia()
+    await requestWakeLockIfSupported()
     state.roomId = await deriveRoomId(state.invite)
     await openSignalingSocket(DEFAULT_DISPLAY_NAME)
     if (state.shouldShowShareModal) {
@@ -376,9 +402,13 @@ function openSignalingSocket(displayName) {
     let settled = false
 
     socket.addEventListener("open", () => {
+      clearSignalingReconnectTimer()
       state.socket = socket
       state.isLeaving = false
+      state.reconnectAttempts = 0
+      state.lastPongAt = Date.now()
       settled = true
+      startSocketHeartbeat()
       sendPresence()
       syncWaitingModal()
       resolve()
@@ -395,27 +425,38 @@ function openSignalingSocket(displayName) {
     })
 
     socket.addEventListener("close", () => {
-      const userInitiated = state.isLeaving
+      const userInitiated = state.isLeaving || state.isResetting
+      const connectionState = state.peerConnection?.connectionState ?? "closed"
+      const keepPeerConnection =
+        connectionState === "connected" || connectionState === "connecting"
 
       if (!settled) {
         reject(new Error("방에 연결하지 못했습니다. 링크가 이미 사용 중일 수 있습니다."))
         return
       }
 
+      stopSocketHeartbeat()
       state.socket = null
       state.shouldOffer = false
       state.offerInFlight = false
       state.isLeaving = false
 
-      if (state.peerConnection) {
+      if (state.peerConnection && !keepPeerConnection) {
         resetPeerConnection()
       }
 
-      if (!userInitiated && state.localStream) {
-        setStatus("세션 연결이 종료되었습니다. 화면을 새로 열면 같은 링크로 다시 들어갈 수 있습니다.")
+      if (!userInitiated && state.localStream && state.roomId) {
+        if (keepPeerConnection) {
+          setStatus("연결 채널이 끊겨 자동으로 복구 중입니다.")
+        } else {
+          setStatus("세션 연결이 끊겼습니다. 자동으로 다시 연결합니다.")
+        }
+        scheduleSignalingReconnect()
+      } else if (!userInitiated && state.localStream) {
+        setStatus("세션 연결이 종료되었습니다. 잠시 뒤 다시 시도해 주세요.")
       }
 
-      hideWaitingModal({ manual: false })
+      syncWaitingModal()
       updateControls()
     })
   })
@@ -450,12 +491,15 @@ async function handleSocketMessage(rawMessage) {
     case "peer-left":
       state.peerName = ""
       state.peerMedia = { ...DEFAULT_PEER_MEDIA }
+      state.iceRestartAttempts = 0
+      state.iceRestartInFlight = false
       resetPeerConnection()
       renderRemoteState()
       syncWaitingModal()
       setStatus("상대방이 나갔습니다. 같은 화면에서 다시 기다릴 수 있습니다.")
       break
     case "pong":
+      state.lastPongAt = Date.now()
       break
     case "error":
       setStatus(message.message ?? "세션 처리 중 오류가 발생했습니다.")
@@ -490,7 +534,7 @@ async function handleRoomState(message) {
   }
 }
 
-async function maybeCreateOffer() {
+async function maybeCreateOffer({ iceRestart = false } = {}) {
   state.offerInFlight = true
 
   try {
@@ -499,13 +543,17 @@ async function maybeCreateOffer() {
       return
     }
 
-    const offer = await state.peerConnection.createOffer()
+    const offer = await state.peerConnection.createOffer(iceRestart ? { iceRestart: true } : {})
     await state.peerConnection.setLocalDescription(offer)
     sendSocketMessage({
       type: "signal",
       description: state.peerConnection.localDescription
     })
-    setStatus("연결 요청을 보냈습니다. 상대방 응답을 기다리는 중입니다.")
+    if (iceRestart) {
+      setStatus("연결을 다시 맞추는 중입니다.")
+    } else {
+      setStatus("연결 요청을 보냈습니다. 상대방 응답을 기다리는 중입니다.")
+    }
   } finally {
     state.offerInFlight = false
   }
@@ -559,20 +607,62 @@ async function ensurePeerConnection() {
     const nextState = connection.connectionState
 
     if (nextState === "connected") {
+      state.iceRestartAttempts = 0
+      state.iceRestartInFlight = false
       hideConnectionHelpModal()
       setStatus("통화 중입니다.")
     } else if (nextState === "connecting") {
       setStatus("통화 연결 중입니다.")
     } else if (nextState === "disconnected") {
       setStatus("연결이 잠시 불안정합니다.")
+      maybeAutoRepairConnection("disconnected")
     } else if (nextState === "failed") {
       setStatus("연결이 잘 되지 않습니다. 네트워크를 바꾸거나 잠시 후 다시 시도해 주세요.")
-      openConnectionHelpModal()
+      const startedRecovery = maybeAutoRepairConnection("failed")
+      if (!startedRecovery) {
+        openConnectionHelpModal()
+      }
     }
   })
 
   updateControls()
   return connection
+}
+
+function maybeAutoRepairConnection(reason) {
+  if (!state.peerConnection || state.iceRestartInFlight) {
+    return false
+  }
+
+  if (state.socket?.readyState !== WebSocket.OPEN) {
+    return false
+  }
+
+  if (!state.peerName) {
+    return false
+  }
+
+  if (state.iceRestartAttempts >= MAX_ICE_RESTART_ATTEMPTS) {
+    return false
+  }
+
+  state.iceRestartAttempts += 1
+  state.iceRestartInFlight = true
+  setStatus(`연결을 다시 맞추는 중입니다. (${state.iceRestartAttempts}/${MAX_ICE_RESTART_ATTEMPTS})`)
+
+  void requestIceRestart(reason).finally(() => {
+    state.iceRestartInFlight = false
+  })
+
+  return true
+}
+
+async function requestIceRestart(reason) {
+  try {
+    await maybeCreateOffer({ iceRestart: true })
+  } catch (error) {
+    console.error("Failed to restart ICE", reason, error)
+  }
 }
 
 async function handleSignal(message) {
@@ -626,7 +716,11 @@ async function applyRemoteCandidate(candidate) {
     return
   }
 
-  await connection.addIceCandidate(candidate)
+  try {
+    await connection.addIceCandidate(candidate)
+  } catch (error) {
+    console.warn("Failed to apply remote ICE candidate", error)
+  }
 }
 
 async function flushPendingCandidates() {
@@ -637,7 +731,15 @@ async function flushPendingCandidates() {
 
   while (state.pendingCandidates.length > 0) {
     const candidate = state.pendingCandidates.shift()
-    await connection.addIceCandidate(candidate)
+    if (!candidate) {
+      continue
+    }
+
+    try {
+      await connection.addIceCandidate(candidate)
+    } catch (error) {
+      console.warn("Failed to flush pending ICE candidate", error)
+    }
   }
 }
 
@@ -712,6 +814,8 @@ function toggleCamera() {
 async function leaveCall() {
   state.isLeaving = true
   clearIntroTimers()
+  clearSignalingReconnectTimer()
+  stopSocketHeartbeat()
   hideConnectionHelpModal()
 
   if (state.socket?.readyState === WebSocket.OPEN) {
@@ -723,7 +827,10 @@ async function leaveCall() {
 }
 
 async function hardReset({ returnToSetup = true } = {}) {
+  state.isResetting = true
   clearIntroTimers()
+  clearSignalingReconnectTimer()
+  stopSocketHeartbeat()
   resetPeerConnection()
 
   if (state.socket) {
@@ -735,16 +842,22 @@ async function hardReset({ returnToSetup = true } = {}) {
   }
 
   state.socket = null
+  state.roomId = null
   state.shouldOffer = false
   state.offerInFlight = false
+  state.iceRestartAttempts = 0
+  state.iceRestartInFlight = false
   state.peerName = ""
   state.peerMedia = { ...DEFAULT_PEER_MEDIA }
   state.isLeaving = false
   state.isJoining = false
   state.waitingModalDismissed = false
+  state.reconnectAttempts = 0
+  state.lastPongAt = 0
 
   stopTracks(state.localStream)
   state.localStream = null
+  await releaseWakeLock()
   state.selfMedia = {
     audioEnabled: true,
     videoEnabled: true,
@@ -763,6 +876,7 @@ async function hardReset({ returnToSetup = true } = {}) {
   renderLocalPreviewState()
   renderRemoteState()
   updateControls()
+  state.isResetting = false
 }
 
 function resetPeerConnection() {
@@ -777,6 +891,8 @@ function resetPeerConnection() {
   state.peerConnection = null
   state.remoteStream = null
   state.pendingCandidates = []
+  state.iceRestartAttempts = 0
+  state.iceRestartInFlight = false
   elements.remoteVideo.srcObject = null
 }
 
@@ -901,6 +1017,92 @@ function hideConnectionHelpModal() {
   elements.connectionHelpModal.classList.add("hidden")
 }
 
+function startSocketHeartbeat() {
+  stopSocketHeartbeat()
+
+  state.lastPongAt = Date.now()
+  sendSocketMessage({ type: "ping" })
+
+  state.socketPingTimer = window.setInterval(() => {
+    if (state.socket?.readyState !== WebSocket.OPEN) {
+      return
+    }
+
+    const now = Date.now()
+    if (now - state.lastPongAt > SOCKET_PONG_TIMEOUT_MS) {
+      setStatus("연결 확인이 지연되어 자동으로 다시 연결합니다.")
+      try {
+        state.socket.close(4000, "Pong timeout")
+      } catch {
+        // Ignore close errors.
+      }
+      return
+    }
+
+    sendSocketMessage({ type: "ping" })
+  }, SOCKET_PING_INTERVAL_MS)
+}
+
+function stopSocketHeartbeat() {
+  if (state.socketPingTimer) {
+    window.clearInterval(state.socketPingTimer)
+    state.socketPingTimer = null
+  }
+}
+
+function scheduleSignalingReconnect() {
+  if (state.signalingReconnectTimer || state.isResetting || state.isLeaving) {
+    return
+  }
+
+  if (!state.localStream || !state.roomId || state.socket) {
+    return
+  }
+
+  if (!state.networkOnline) {
+    setStatus("네트워크 복구를 기다리는 중입니다.")
+    return
+  }
+
+  if (state.reconnectAttempts >= MAX_SIGNALING_RECONNECT_ATTEMPTS) {
+    setStatus("연결 복구가 어려워 다시 시도가 필요합니다.")
+    openConnectionHelpModal()
+    return
+  }
+
+  state.reconnectAttempts += 1
+  const attempt = state.reconnectAttempts
+  const delay = Math.min(SIGNALING_RECONNECT_BASE_DELAY_MS * attempt, 6000)
+
+  setStatus(`세션을 다시 연결하는 중입니다. (${attempt}/${MAX_SIGNALING_RECONNECT_ATTEMPTS})`)
+
+  state.signalingReconnectTimer = window.setTimeout(async () => {
+    state.signalingReconnectTimer = null
+
+    if (state.isResetting || state.isLeaving || !state.localStream || !state.roomId || state.socket) {
+      return
+    }
+
+    try {
+      await openSignalingSocket(DEFAULT_DISPLAY_NAME)
+      setStatus("세션을 다시 연결했습니다.")
+
+      if (state.peerConnection && state.peerConnection.connectionState !== "connected") {
+        maybeAutoRepairConnection("reconnected")
+      }
+    } catch {
+      scheduleSignalingReconnect()
+    }
+  }, delay)
+}
+
+function clearSignalingReconnectTimer() {
+  if (state.signalingReconnectTimer) {
+    window.clearTimeout(state.signalingReconnectTimer)
+    state.signalingReconnectTimer = null
+  }
+}
+
 function shouldShowWaitingModal() {
   return state.shouldShowShareModal && !state.peerName
 }
@@ -959,6 +1161,65 @@ function clearIntroTimers() {
   }
 
   clearAutoEnterTimer()
+}
+
+function handleNetworkOnline() {
+  state.networkOnline = true
+  if (state.localStream) {
+    setStatus("인터넷이 복구되어 연결을 확인하는 중입니다.")
+  }
+
+  if (state.localStream && !state.socket && state.roomId) {
+    scheduleSignalingReconnect()
+  }
+
+  if (state.localStream) {
+    void requestWakeLockIfSupported()
+  }
+}
+
+function handleNetworkOffline() {
+  state.networkOnline = false
+  setStatus("인터넷이 끊겼습니다. 다시 연결되면 자동으로 재시도합니다.")
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "visible" && state.localStream) {
+    void requestWakeLockIfSupported()
+  }
+}
+
+async function requestWakeLockIfSupported() {
+  if (!("wakeLock" in navigator) || document.visibilityState !== "visible" || !state.localStream) {
+    return
+  }
+
+  if (state.wakeLock) {
+    return
+  }
+
+  try {
+    state.wakeLock = await navigator.wakeLock.request("screen")
+    state.wakeLock.addEventListener("release", () => {
+      state.wakeLock = null
+    })
+  } catch {
+    // Ignore unsupported/denied wake lock.
+  }
+}
+
+async function releaseWakeLock() {
+  if (!state.wakeLock) {
+    return
+  }
+
+  try {
+    await state.wakeLock.release()
+  } catch {
+    // Ignore release errors.
+  } finally {
+    state.wakeLock = null
+  }
 }
 
 async function retryCurrentCall() {

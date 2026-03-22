@@ -25,6 +25,9 @@ const elements = {
   callView: document.querySelector("#callView"),
   waitingModal: document.querySelector("#waitingModal"),
   connectionHelpModal: document.querySelector("#connectionHelpModal"),
+  introPanel: document.querySelector("#introPanel"),
+  lobbyPanel: document.querySelector("#lobbyPanel"),
+  directJoinSwitchBtn: document.querySelector("#directJoinSwitchBtn"),
   displayNameInput: document.querySelector("#displayNameInput"),
   createModeBtn: document.querySelector("#createModeBtn"),
   joinModeBtn: document.querySelector("#joinModeBtn"),
@@ -74,6 +77,7 @@ const DEFAULT_MEDIA_STATE = {
 const state = {
   clientId,
   mode: "create",
+  setupStage: "intro",
   room: null,
   socket: null,
   localStream: null,
@@ -92,6 +96,7 @@ const state = {
   reconnectAttempts: 0,
   lastPongAt: 0,
   waitingModalDismissed: false,
+  quickStartTimer: null,
   networkOnline: navigator.onLine,
   wakeLock: null
 }
@@ -100,6 +105,7 @@ bindEvents()
 bootstrap()
 
 function bindEvents() {
+  elements.directJoinSwitchBtn.addEventListener("click", openLobbyFromIntro)
   elements.createModeBtn.addEventListener("click", () => setMode("create"))
   elements.joinModeBtn.addEventListener("click", () => setMode("join"))
   elements.isPrivateCheck.addEventListener("change", toggleCreatePinVisibility)
@@ -167,8 +173,70 @@ function bootstrap() {
   renderRemoteStageState()
   renderLocalPreviewState()
   setView("setup")
-  setStatus("방을 만들거나 방 키(4자리)로 입장해 주세요.")
+  setStatus("빠른 방을 자동으로 준비하는 중입니다.")
   updateControls()
+
+  const sharedRoom = parseSharedRoomFromUrl()
+  if (sharedRoom) {
+    beginSharedRoomEntry(sharedRoom)
+    return
+  }
+
+  beginQuickStartFlow()
+}
+
+function beginQuickStartFlow() {
+  clearQuickStartTimer()
+  setSetupStage("intro")
+  setView("setup")
+  setStatus("개인 방을 자동으로 준비하는 중입니다.")
+
+  state.quickStartTimer = window.setTimeout(() => {
+    state.quickStartTimer = null
+    void createQuickRoom()
+  }, 1100)
+}
+
+function beginSharedRoomEntry(sharedRoom) {
+  clearQuickStartTimer()
+  setSetupStage("intro")
+  setView("setup")
+  elements.joinRoomCodeInput.value = sharedRoom.code
+  elements.joinPinInput.value = sharedRoom.pin ?? ""
+  setStatus("공유받은 방으로 바로 들어가는 중입니다.")
+
+  state.quickStartTimer = window.setTimeout(() => {
+    state.quickStartTimer = null
+    void joinSharedRoom(sharedRoom)
+  }, 500)
+}
+
+function openLobbyFromIntro() {
+  clearQuickStartTimer()
+  setMode("join")
+  showLobby("방 키가 있으면 여기서 바로 입장할 수 있습니다.")
+}
+
+function showLobby(message = "통화를 끊으면 여기서 다시 시작할 수 있습니다.") {
+  clearQuickStartTimer()
+  setSetupStage("lobby")
+  setView("setup")
+  setStatus(message)
+}
+
+function setSetupStage(stage) {
+  state.setupStage = stage === "lobby" ? "lobby" : "intro"
+  elements.introPanel.classList.toggle("hidden", state.setupStage !== "intro")
+  elements.lobbyPanel.classList.toggle("hidden", state.setupStage !== "lobby")
+}
+
+function clearQuickStartTimer() {
+  if (!state.quickStartTimer) {
+    return
+  }
+
+  window.clearTimeout(state.quickStartTimer)
+  state.quickStartTimer = null
 }
 
 function setMode(mode) {
@@ -189,6 +257,95 @@ function toggleCreatePinVisibility() {
   elements.createPinWrap.classList.toggle("hidden", !visible)
   if (!visible) {
     elements.createPinInput.value = ""
+  }
+}
+
+async function createQuickRoom() {
+  if (state.isJoining) {
+    return
+  }
+
+  readAndPersistDisplayName()
+  setSetupBusy(true)
+  setStatus("빠른 방을 만들고 있습니다...")
+
+  try {
+    const payload = await fetchJsonOrThrow("/api/rooms", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        title: `${state.displayName}의 빠른 방`,
+        capacity: 4,
+        isPrivate: false,
+        pin: ""
+      })
+    })
+
+    state.room = {
+      code: payload.roomCode,
+      roomTitle: payload.roomTitle,
+      capacity: payload.capacity,
+      isPrivate: payload.isPrivate,
+      pin: ""
+    }
+    applyRoomQueryToUrl(state.room)
+    updateRoomMetaUI()
+    await joinCurrentRoom()
+  } catch (error) {
+    state.room = null
+    clearRoomQueryFromUrl()
+    showLobby(readErrorMessage(error, "자동 방 생성에 실패했습니다. 여기서 다시 시작해 주세요."))
+  } finally {
+    setSetupBusy(false)
+  }
+}
+
+async function joinSharedRoom(sharedRoom) {
+  if (state.isJoining) {
+    return
+  }
+
+  readAndPersistDisplayName()
+  setSetupBusy(true)
+
+  try {
+    const payload = await fetchJsonOrThrow(`/api/rooms/${sharedRoom.code}/join`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        pin: sharedRoom.pin ?? ""
+      })
+    })
+
+    state.room = {
+      code: sharedRoom.code,
+      roomTitle: payload.roomTitle,
+      capacity: payload.capacity,
+      isPrivate: payload.isPrivate,
+      pin: payload.isPrivate ? sharedRoom.pin ?? "" : ""
+    }
+
+    if (state.room.isPrivate && !PIN_REGEX.test(state.room.pin)) {
+      clearRoomQueryFromUrl()
+      showLobby("이 방은 비공개방입니다. 비밀번호 4자리를 입력해 주세요.")
+      setMode("join")
+      return
+    }
+
+    applyRoomQueryToUrl(state.room)
+    updateRoomMetaUI()
+    await joinCurrentRoom()
+  } catch (error) {
+    state.room = null
+    clearRoomQueryFromUrl()
+    showLobby(readErrorMessage(error, "공유된 방에 들어가지 못했습니다. 방 키를 다시 확인해 주세요."))
+    setMode("join")
+  } finally {
+    setSetupBusy(false)
   }
 }
 
@@ -240,6 +397,7 @@ async function handleCreateSubmit(event) {
       pin: payload.isPrivate ? pin : ""
     }
     state.waitingModalDismissed = false
+    applyRoomQueryToUrl(state.room)
     updateRoomMetaUI()
     setStatus(`방 키 ${state.room.code} 생성 완료. 통화 화면으로 전환합니다.`)
     await joinCurrentRoom()
@@ -298,6 +456,7 @@ async function handleJoinSubmit(event) {
     }
 
     state.waitingModalDismissed = false
+    applyRoomQueryToUrl(state.room)
     updateRoomMetaUI()
     setStatus(`${displayName} 님으로 방 ${roomCode}에 입장합니다.`)
     await joinCurrentRoom()
@@ -330,13 +489,19 @@ async function joinCurrentRoom(options = {}) {
     syncWaitingModal()
   } catch (error) {
     console.error(error)
-    setStatus(readErrorMessage(error, "통화 화면으로 전환하지 못했습니다. 다시 시도해 주세요."))
+    const failureMessage = readErrorMessage(
+      error,
+      "통화 화면으로 전환하지 못했습니다. 다시 시도해 주세요."
+    )
     await hardReset({
       returnToSetup: !reuseCurrentView,
-      preserveRoom: true
+      preserveRoom: reuseCurrentView
     })
     if (reuseCurrentView) {
+      setStatus(failureMessage)
       openConnectionHelpModal()
+    } else {
+      showLobby(failureMessage)
     }
   } finally {
     state.isJoining = false
@@ -430,11 +595,7 @@ function openSignalingSocket(displayName) {
       state.socket = null
 
       if (!userInitiated && isFatalSocketClose(event.code)) {
-        setStatus(event.reason || "방 연결이 종료되었습니다.")
-        void hardReset({
-          returnToSetup: true,
-          preserveRoom: false
-        })
+        void resetToLobby(event.reason || "방 연결이 종료되었습니다.")
         return
       }
 
@@ -485,11 +646,7 @@ async function handleSocketMessage(rawMessage) {
       syncWaitingModal()
       break
     case "room-full":
-      setStatus(message.message ?? "방 인원이 가득 찼습니다.")
-      await hardReset({
-        returnToSetup: true,
-        preserveRoom: false
-      })
+      await resetToLobby(message.message ?? "방 인원이 가득 찼습니다.")
       break
     case "pong":
       state.lastPongAt = Date.now()
@@ -976,11 +1133,16 @@ async function leaveCall() {
   stopSocketHeartbeat()
   hideConnectionHelpModal()
   hideWaitingModal({ manual: false })
+  await resetToLobby("통화를 종료했습니다. 여기서 다시 시작할 수 있습니다.")
+}
+
+async function resetToLobby(message, options = {}) {
+  const { preserveRoom = false } = options
   await hardReset({
     returnToSetup: true,
-    preserveRoom: false
+    preserveRoom
   })
-  setStatus("통화를 종료했습니다. 새 방을 만들거나 방 키로 다시 입장할 수 있습니다.")
+  showLobby(message)
 }
 
 async function hardReset({ returnToSetup = true, preserveRoom = false } = {}) {
@@ -989,6 +1151,7 @@ async function hardReset({ returnToSetup = true, preserveRoom = false } = {}) {
   }
 
   state.isResetting = true
+  clearQuickStartTimer()
   clearSignalingReconnectTimer()
   stopSocketHeartbeat()
 
@@ -1024,11 +1187,13 @@ async function hardReset({ returnToSetup = true, preserveRoom = false } = {}) {
     state.room = null
     elements.joinRoomCodeInput.value = ""
     elements.joinPinInput.value = ""
+    clearRoomQueryFromUrl()
   }
 
   updateRoomMetaUI()
   hideConnectionHelpModal()
   hideWaitingModal({ manual: false })
+  setSetupBusy(false)
 
   if (returnToSetup) {
     setView("setup")
@@ -1065,6 +1230,7 @@ function updateControls(isBusy = false) {
 }
 
 function setSetupBusy(busy) {
+  elements.directJoinSwitchBtn.disabled = busy
   elements.createModeBtn.disabled = busy
   elements.joinModeBtn.disabled = busy
   elements.createRoomBtn.disabled = busy
@@ -1131,18 +1297,21 @@ async function shareRoomInvite() {
     return
   }
 
+  const shareUrl = buildRoomShareUrl(state.room)
   const inviteText = [
     "워키토키 방 초대",
     `방 키: ${state.room.code}`,
     `최대 인원: ${state.room.capacity}명`,
-    state.room.isPrivate ? `비밀번호: ${state.room.pin}` : "비밀번호: 없음(공개방)"
+    state.room.isPrivate ? `비밀번호: ${state.room.pin}` : "비밀번호: 없음(공개방)",
+    `바로 입장: ${shareUrl}`
   ].join("\n")
 
   if (typeof navigator.share === "function") {
     try {
       await navigator.share({
         title: "워키토키 방 초대",
-        text: inviteText
+        text: inviteText,
+        url: shareUrl
       })
       setStatus("초대 전달 창을 열었습니다.")
       return
@@ -1368,6 +1537,38 @@ async function getIceServers() {
   }
 
   return state.iceServersPromise
+}
+
+function parseSharedRoomFromUrl() {
+  const params = new URLSearchParams(location.search)
+  const code = onlyDigits(params.get("room")).slice(0, 4)
+  const pin = onlyDigits(params.get("pin")).slice(0, 4)
+
+  if (!ROOM_CODE_REGEX.test(code)) {
+    return null
+  }
+
+  return {
+    code,
+    pin: PIN_REGEX.test(pin) ? pin : ""
+  }
+}
+
+function buildRoomShareUrl(room) {
+  const url = new URL(location.origin + location.pathname)
+  url.searchParams.set("room", room.code)
+  if (room.isPrivate && room.pin) {
+    url.searchParams.set("pin", room.pin)
+  }
+  return url.toString()
+}
+
+function applyRoomQueryToUrl(room) {
+  history.replaceState(null, "", buildRoomShareUrl(room))
+}
+
+function clearRoomQueryFromUrl() {
+  history.replaceState(null, "", location.pathname)
 }
 
 function stopTracks(stream) {

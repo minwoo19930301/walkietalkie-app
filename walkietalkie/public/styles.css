@@ -203,6 +203,82 @@ button:disabled {
   gap: 10px;
 }
 
+.intro-panel {
+  min-height: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+  padding: 12px 2px 4px;
+}
+
+.intro-pulse {
+  position: relative;
+  inline-size: 146px;
+  block-size: 146px;
+}
+
+.intro-pulse-ring,
+.intro-pulse-core {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  border-radius: 999px;
+}
+
+.intro-pulse-ring {
+  border: 1px solid rgba(182, 74, 40, 0.2);
+  animation: introPulse 2.2s ease-out infinite;
+}
+
+.ring-a {
+  inline-size: 92px;
+  block-size: 92px;
+}
+
+.ring-b {
+  inline-size: 136px;
+  block-size: 136px;
+  animation-delay: 0.4s;
+}
+
+.intro-pulse-core {
+  inline-size: 20px;
+  block-size: 20px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  box-shadow:
+    0 0 0 12px rgba(212, 99, 63, 0.12),
+    0 16px 28px rgba(182, 74, 40, 0.22);
+}
+
+.intro-lead {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.intro-note {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 0.93rem;
+}
+
+.intro-alt-btn {
+  min-width: 220px;
+}
+
+.lobby-kicker {
+  margin: 0 0 4px;
+  color: var(--accent-strong);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .field-label {
   font-size: 0.92rem;
   font-weight: 800;
@@ -665,6 +741,23 @@ button:disabled {
   margin-top: 16px;
 }
 
+@keyframes introPulse {
+  0% {
+    scale: 0.9;
+    opacity: 0.9;
+  }
+
+  70% {
+    scale: 1.04;
+    opacity: 0.3;
+  }
+
+  100% {
+    scale: 1.1;
+    opacity: 0;
+  }
+}
+
 @media (max-height: 760px) {
   .hero-card {
     padding: 14px;
@@ -678,6 +771,11 @@ button:disabled {
   .hero-copy {
     margin-top: 8px;
     font-size: 0.9rem;
+  }
+
+  .intro-pulse {
+    inline-size: 124px;
+    block-size: 124px;
   }
 
   .field-input {

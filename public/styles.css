@@ -739,6 +739,21 @@ select:disabled {
   stroke: #ffb8b8;
 }
 
+.video-toggle-icon .camera-fill,
+.switch-camera-icon .camera-fill {
+  fill: currentColor;
+  stroke: none;
+}
+
+.switch-camera-icon {
+  inline-size: 20px;
+  block-size: 20px;
+}
+
+.switch-camera-icon path:not(.camera-fill) {
+  stroke-width: 1.65;
+}
+
 .hangup-icon {
   inline-size: 26px;
   block-size: 26px;

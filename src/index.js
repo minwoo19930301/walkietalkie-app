@@ -1,12 +1,40 @@
 import { DurableObject } from "cloudflare:workers"
 
-const WS_PATH = /^\/api\/rooms\/([0-9]{4})\/ws$/
-const JOIN_PATH = /^\/api\/rooms\/([0-9]{4})\/join$/
-const ROOM_CODE_REGEX = /^[0-9]{4}$/
+const WS_PATH = /^\/api\/rooms\/([a-z0-9-]{6,32})\/ws$/
+const JOIN_PATH = /^\/api\/rooms\/([a-z0-9-]{6,32})\/join$/
+const ROOM_ID_REGEX = /^[a-z0-9-]{6,32}$/
 const PIN_REGEX = /^[0-9]{4}$/
 const ALLOWED_CAPACITIES = new Set([4, 6, 8])
 const ROOM_META_KEY = "room_meta"
+const LOBBY_ROOMS_KEY = "rooms"
 const ROOM_IDLE_TTL_MS = 1000 * 60 * 20
+
+const ROOM_WORDS = [
+  "amber",
+  "breeze",
+  "cocoa",
+  "coral",
+  "daisy",
+  "drift",
+  "echo",
+  "ember",
+  "glow",
+  "hazel",
+  "honey",
+  "linen",
+  "luna",
+  "mango",
+  "mint",
+  "mocha",
+  "olive",
+  "pearl",
+  "poppy",
+  "river",
+  "satin",
+  "sunny",
+  "velvet",
+  "willow"
+]
 
 export default {
   async fetch(request, env) {
@@ -22,6 +50,22 @@ export default {
       })
     }
 
+    if (url.pathname === "/api/lobby") {
+      if (request.method !== "GET") {
+        return json(
+          {
+            message: "Method not allowed."
+          },
+          { status: 405 }
+        )
+      }
+
+      const response = await dispatchToLobby(env, "/list", {
+        method: "GET"
+      })
+      return withDefaultHeaders(response)
+    }
+
     if (url.pathname === "/api/rooms") {
       if (request.method !== "POST") {
         return json(
@@ -31,6 +75,7 @@ export default {
           { status: 405 }
         )
       }
+
       return createRoom(request, env)
     }
 
@@ -44,6 +89,7 @@ export default {
           { status: 405 }
         )
       }
+
       return joinRoom(request, env, joinMatch[1])
     }
 
@@ -53,8 +99,8 @@ export default {
         return new Response("WebSocket upgrade required.", { status: 426 })
       }
 
-      const roomCode = roomWsMatch[1]
-      const stub = roomStub(env, roomCode)
+      const roomId = roomWsMatch[1]
+      const stub = roomStub(env, roomId)
       const internalUrl = new URL("https://walkietalkie.internal/ws")
       internalUrl.search = url.search
 
@@ -79,18 +125,15 @@ async function createRoom(request, env) {
   }
 
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const roomCode = randomDigits(4)
-    if (!ROOM_CODE_REGEX.test(roomCode)) {
-      continue
-    }
-
-    const response = await dispatchToRoom(env, roomCode, "/create", {
+    const identity = generateRoomIdentity()
+    const response = await dispatchToRoom(env, identity.roomId, "/create", {
       method: "POST",
       headers: {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        title: roomInput.room.roomTitle,
+        roomId: identity.roomId,
+        roomTitle: identity.roomTitle,
         capacity: roomInput.room.capacity,
         isPrivate: roomInput.room.isPrivate,
         pin: roomInput.room.pin
@@ -112,34 +155,29 @@ async function createRoom(request, env) {
     }
 
     const roomMeta = await parseResponseJson(response)
-    return json({
-      roomCode,
-      roomTitle: roomMeta.roomTitle,
-      capacity: roomMeta.capacity,
-      isPrivate: roomMeta.isPrivate
-    })
+    return json(roomMeta, { status: 201 })
   }
 
   return json(
     {
-      message: "사용 가능한 방 키를 찾지 못했습니다. 잠시 후 다시 시도해 주세요."
+      message: "사용 가능한 랜덤 방 이름을 만들지 못했습니다. 잠시 후 다시 시도해 주세요."
     },
     { status: 503 }
   )
 }
 
-async function joinRoom(request, env, roomCode) {
-  if (!ROOM_CODE_REGEX.test(roomCode)) {
+async function joinRoom(request, env, roomId) {
+  if (!ROOM_ID_REGEX.test(roomId)) {
     return json(
       {
-        message: "방 키는 숫자 4자리입니다."
+        message: "잘못된 방 링크입니다."
       },
       { status: 400 }
     )
   }
 
   const bodyText = await request.text()
-  const response = await dispatchToRoom(env, roomCode, "/join", {
+  const response = await dispatchToRoom(env, roomId, "/join", {
     method: "POST",
     headers: {
       "content-type": "application/json"
@@ -157,21 +195,25 @@ async function joinRoom(request, env, roomCode) {
     )
   }
 
-  const roomMeta = await parseResponseJson(response)
-  return json({
-    roomTitle: roomMeta.roomTitle,
-    capacity: roomMeta.capacity,
-    isPrivate: roomMeta.isPrivate,
-    currentParticipants: roomMeta.currentParticipants
-  })
+  return withDefaultHeaders(response)
 }
 
-function roomStub(env, roomCode) {
-  return env.ROOMS.get(env.ROOMS.idFromName(`room:${roomCode}`))
+function roomStub(env, roomId) {
+  return env.ROOMS.get(env.ROOMS.idFromName(`room:${roomId}`))
 }
 
-async function dispatchToRoom(env, roomCode, pathname, init) {
-  const stub = roomStub(env, roomCode)
+function lobbyStub(env) {
+  return env.LOBBY.get(env.LOBBY.idFromName("active-lobby"))
+}
+
+async function dispatchToRoom(env, roomId, pathname, init) {
+  const stub = roomStub(env, roomId)
+  const url = new URL(`https://walkietalkie.internal${pathname}`)
+  return stub.fetch(new Request(url, init))
+}
+
+async function dispatchToLobby(env, pathname, init) {
+  const stub = lobbyStub(env)
   const url = new URL(`https://walkietalkie.internal${pathname}`)
   return stub.fetch(new Request(url, init))
 }
@@ -179,6 +221,8 @@ async function dispatchToRoom(env, roomCode, pathname, init) {
 export class SignalingRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env)
+    this.ctx = ctx
+    this.env = env
     this.room = null
   }
 
@@ -201,17 +245,8 @@ export class SignalingRoom extends DurableObject {
   }
 
   async handleCreate(request) {
-    if (request.method !== "POST") {
-      return json(
-        {
-          message: "Method not allowed."
-        },
-        { status: 405 }
-      )
-    }
-
     const payload = await parseRequestJson(request)
-    const normalized = validateCreatePayload(payload)
+    const normalized = validateStoredRoomPayload(payload)
     if (!normalized.ok) {
       return json(
         {
@@ -222,17 +257,17 @@ export class SignalingRoom extends DurableObject {
     }
 
     const currentRoom = await this.readRoomMeta()
-
     if (currentRoom) {
       return json(
         {
-          message: "이미 사용 중인 방 키입니다. 다시 시도해 주세요."
+          message: "이미 사용 중인 방입니다. 다시 시도해 주세요."
         },
         { status: 409 }
       )
     }
 
-    const nextRoom = {
+    this.room = {
+      roomId: normalized.room.roomId,
       roomTitle: normalized.room.roomTitle,
       capacity: normalized.room.capacity,
       isPrivate: normalized.room.isPrivate,
@@ -240,27 +275,18 @@ export class SignalingRoom extends DurableObject {
       createdAt: Date.now()
     }
 
-    this.room = nextRoom
-    await this.ctx.storage.put(ROOM_META_KEY, nextRoom)
+    await this.ctx.storage.put(ROOM_META_KEY, this.room)
+    await this.syncLobbySummary()
 
-    return json(publicRoomMeta(nextRoom), { status: 201 })
+    return json(publicRoomMeta(this.room), { status: 201 })
   }
 
   async handleJoin(request) {
-    if (request.method !== "POST") {
-      return json(
-        {
-          message: "Method not allowed."
-        },
-        { status: 405 }
-      )
-    }
-
     const room = await this.readRoomMeta()
     if (!room) {
       return json(
         {
-          message: "해당 방을 찾지 못했습니다. 방 키를 다시 확인해 주세요."
+          message: "해당 방을 찾지 못했습니다."
         },
         { status: 404 }
       )
@@ -278,8 +304,8 @@ export class SignalingRoom extends DurableObject {
       )
     }
 
-    const sessions = this.listSessions()
-    if (sessions.length >= room.capacity) {
+    const participants = this.listSessions().length
+    if (participants >= room.capacity) {
       return json(
         {
           message: "방 인원이 가득 찼습니다."
@@ -290,7 +316,7 @@ export class SignalingRoom extends DurableObject {
 
     return json({
       ...publicRoomMeta(room),
-      currentParticipants: sessions.length
+      currentParticipants: participants
     })
   }
 
@@ -313,7 +339,7 @@ export class SignalingRoom extends DurableObject {
     }
 
     if (room.isPrivate && pin !== room.pin) {
-      return this.wsErrorResponse(4403, "비밀번호 4자리가 일치하지 않습니다.", "error")
+      return this.wsErrorResponse(4403, "비밀번호가 맞지 않습니다.", "error")
     }
 
     const duplicate = this.listSessions().find(({ meta }) => meta.clientId === clientId)
@@ -325,8 +351,7 @@ export class SignalingRoom extends DurableObject {
       }
     }
 
-    const sessions = this.listSessions()
-    if (sessions.length >= room.capacity) {
+    if (this.listSessions().length >= room.capacity) {
       return this.wsErrorResponse(4409, "방 인원이 가득 찼습니다.", "room-full")
     }
 
@@ -344,6 +369,7 @@ export class SignalingRoom extends DurableObject {
         videoEnabled: true,
         hasVideo: true
       },
+      roomId: room.roomId,
       roomTitle: room.roomTitle,
       capacity: room.capacity,
       isPrivate: room.isPrivate
@@ -355,6 +381,7 @@ export class SignalingRoom extends DurableObject {
       room: publicRoomMeta(room)
     })
     this.broadcastRoomState()
+    this.ctx.waitUntil(this.syncLobbySummary())
 
     return new Response(null, { status: 101, webSocket: client })
   }
@@ -386,7 +413,7 @@ export class SignalingRoom extends DurableObject {
         if (!to) {
           this.send(ws, {
             type: "error",
-            message: "신호 대상(to)이 없습니다."
+            message: "신호 대상이 없습니다."
           })
           return
         }
@@ -413,6 +440,42 @@ export class SignalingRoom extends DurableObject {
         this.broadcastRoomState()
         break
       }
+      case "chat": {
+        const text = sanitizeChatText(data.text)
+        if (!text) {
+          this.send(ws, {
+            type: "error",
+            message: "채팅 내용이 비어 있습니다."
+          })
+          return
+        }
+
+        this.broadcastToPeers(meta.clientId, {
+          type: "chat",
+          from: meta.clientId,
+          text
+        })
+        break
+      }
+      case "doodle": {
+        const segment = sanitizeDoodleSegment(data.segment)
+        if (!segment) {
+          return
+        }
+
+        this.broadcastToPeers(meta.clientId, {
+          type: "doodle",
+          from: meta.clientId,
+          segment
+        })
+        break
+      }
+      case "doodle-clear":
+        this.broadcastToPeers(meta.clientId, {
+          type: "doodle-clear",
+          from: meta.clientId
+        })
+        break
       case "ping":
         this.send(ws, { type: "pong" })
         break
@@ -441,6 +504,7 @@ export class SignalingRoom extends DurableObject {
     }
 
     this.broadcastRoomState()
+    this.ctx.waitUntil(this.syncLobbySummary())
     this.ctx.waitUntil(this.clearRoomMetaWhenEmpty())
   }
 
@@ -474,19 +538,74 @@ export class SignalingRoom extends DurableObject {
       return roomMeta
     }
 
-    this.room = null
-    await this.ctx.storage.delete(ROOM_META_KEY)
+    await this.removeRoom()
     return null
   }
 
   async clearRoomMetaWhenEmpty() {
-    const sessions = this.listSessions()
-    if (sessions.length > 0) {
+    if (this.listSessions().length > 0) {
       return
     }
 
+    await this.removeRoom()
+  }
+
+  async removeRoom() {
+    const roomId = sanitizeRoomId(this.room?.roomId)
     this.room = null
     await this.ctx.storage.delete(ROOM_META_KEY)
+
+    if (!roomId) {
+      return
+    }
+
+    await dispatchToLobby(this.env, "/remove", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        roomId
+      })
+    })
+  }
+
+  async syncLobbySummary() {
+    const room = await this.readRoomMeta()
+    const participants = this.listSessions().length
+
+    if (!room || participants <= 0) {
+      const roomId = sanitizeRoomId(room?.roomId ?? this.room?.roomId)
+      if (!roomId) {
+        return
+      }
+
+      await dispatchToLobby(this.env, "/remove", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          roomId
+        })
+      })
+      return
+    }
+
+    await dispatchToLobby(this.env, "/upsert", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        roomId: room.roomId,
+        roomTitle: room.roomTitle,
+        capacity: room.capacity,
+        isPrivate: room.isPrivate,
+        participants,
+        updatedAt: Date.now()
+      })
+    })
   }
 
   listSessions() {
@@ -506,7 +625,8 @@ export class SignalingRoom extends DurableObject {
     const sessions = this.listSessions()
     const roomFromSocket = sessions[0]?.meta
     const room = this.room ?? {
-      roomTitle: roomFromSocket?.roomTitle ?? "워키토키 방",
+      roomId: roomFromSocket?.roomId ?? "",
+      roomTitle: roomFromSocket?.roomTitle ?? "WALKIETALKIE-0000",
       capacity: sanitizeCapacity(roomFromSocket?.capacity),
       isPrivate: Boolean(roomFromSocket?.isPrivate)
     }
@@ -532,6 +652,7 @@ export class SignalingRoom extends DurableObject {
       if (!meta.clientId || meta.clientId === senderId) {
         continue
       }
+
       this.send(socket, payload)
     }
   }
@@ -541,6 +662,7 @@ export class SignalingRoom extends DurableObject {
       if (meta.clientId !== targetClientId) {
         continue
       }
+
       this.send(socket, payload)
       return
     }
@@ -570,8 +692,89 @@ export class SignalingRoom extends DurableObject {
   }
 }
 
+export class LobbyRegistry extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env)
+    this.ctx = ctx
+    this.env = env
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url)
+
+    if (url.pathname === "/list") {
+      return this.handleList()
+    }
+
+    if (url.pathname === "/upsert") {
+      return this.handleUpsert(request)
+    }
+
+    if (url.pathname === "/remove") {
+      return this.handleRemove(request)
+    }
+
+    return new Response("Not found.", { status: 404 })
+  }
+
+  async handleList() {
+    const roomsMap = await this.readRoomsMap()
+    const rooms = Object.values(roomsMap)
+      .map((room) => sanitizeLobbySummary(room))
+      .filter((room) => room != null)
+      .filter((room) => Date.now() - room.updatedAt < ROOM_IDLE_TTL_MS)
+      .filter((room) => room.participants > 0 && room.participants < room.capacity)
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+
+    const cleanedMap = Object.fromEntries(rooms.map((room) => [room.roomId, room]))
+    await this.ctx.storage.put(LOBBY_ROOMS_KEY, cleanedMap)
+
+    return json({ rooms })
+  }
+
+  async handleUpsert(request) {
+    const payload = await parseRequestJson(request)
+    const summary = sanitizeLobbySummary(payload)
+    if (!summary) {
+      return json(
+        {
+          message: "잘못된 대기실 데이터입니다."
+        },
+        { status: 400 }
+      )
+    }
+
+    const roomsMap = await this.readRoomsMap()
+    roomsMap[summary.roomId] = summary
+    await this.ctx.storage.put(LOBBY_ROOMS_KEY, roomsMap)
+
+    return json({ ok: true })
+  }
+
+  async handleRemove(request) {
+    const payload = await parseRequestJson(request)
+    const roomId = sanitizeRoomId(payload.roomId)
+    if (!roomId) {
+      return json({ ok: true })
+    }
+
+    const roomsMap = await this.readRoomsMap()
+    delete roomsMap[roomId]
+    await this.ctx.storage.put(LOBBY_ROOMS_KEY, roomsMap)
+
+    return json({ ok: true })
+  }
+
+  async readRoomsMap() {
+    const roomsMap = await this.ctx.storage.get(LOBBY_ROOMS_KEY)
+    if (!roomsMap || typeof roomsMap !== "object") {
+      return {}
+    }
+    return roomsMap
+  }
+}
+
 function validateCreatePayload(payload) {
-  const roomTitle = sanitizeRoomTitle(payload?.title)
   const capacity = sanitizeCapacity(payload?.capacity)
   const isPrivate = Boolean(payload?.isPrivate)
   const pin = sanitizePin(payload?.pin)
@@ -593,6 +796,52 @@ function validateCreatePayload(payload) {
   return {
     ok: true,
     room: {
+      capacity,
+      isPrivate,
+      pin: isPrivate ? pin : ""
+    }
+  }
+}
+
+function validateStoredRoomPayload(payload) {
+  const roomId = sanitizeRoomId(payload?.roomId)
+  const roomTitle = sanitizeRoomTitle(payload?.roomTitle)
+  const capacity = sanitizeCapacity(payload?.capacity)
+  const isPrivate = Boolean(payload?.isPrivate)
+  const pin = sanitizePin(payload?.pin)
+
+  if (!roomId) {
+    return {
+      ok: false,
+      message: "방 ID가 없습니다."
+    }
+  }
+
+  if (!roomTitle) {
+    return {
+      ok: false,
+      message: "방 이름이 없습니다."
+    }
+  }
+
+  if (!ALLOWED_CAPACITIES.has(capacity)) {
+    return {
+      ok: false,
+      message: "최대 인원이 올바르지 않습니다."
+    }
+  }
+
+  if (isPrivate && !PIN_REGEX.test(pin)) {
+    return {
+      ok: false,
+      message: "비밀번호 4자리가 필요합니다."
+    }
+  }
+
+  return {
+    ok: true,
+    room: {
+      roomId,
       roomTitle,
       capacity,
       isPrivate,
@@ -610,6 +859,11 @@ function sanitizePin(value) {
   return `${value ?? ""}`.replace(/\D/g, "").slice(0, 4)
 }
 
+function sanitizeRoomId(value) {
+  const safe = `${value ?? ""}`.trim().toLowerCase().replace(/[^a-z0-9-]/g, "")
+  return ROOM_ID_REGEX.test(safe) ? safe : ""
+}
+
 function sanitizeClientId(value) {
   return `${value ?? ""}`.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64)
 }
@@ -619,15 +873,17 @@ function sanitizeName(value) {
   if (!trimmed) {
     return "참여자"
   }
+
   return trimmed.replace(/\s+/g, " ").slice(0, 24)
 }
 
 function sanitizeRoomTitle(value) {
   const trimmed = `${value ?? ""}`.trim()
   if (!trimmed) {
-    return "워키토키 방"
+    return ""
   }
-  return trimmed.replace(/\s+/g, " ").slice(0, 32)
+
+  return trimmed.replace(/[^a-zA-Z0-9-]/g, "").slice(0, 32).toUpperCase()
 }
 
 function sanitizeMedia(media) {
@@ -638,11 +894,75 @@ function sanitizeMedia(media) {
   }
 }
 
+function sanitizeChatText(value) {
+  const trimmed = `${value ?? ""}`.trim()
+  if (!trimmed) {
+    return ""
+  }
+
+  return trimmed.replace(/\s+/g, " ").slice(0, 60)
+}
+
+function sanitizeDoodleSegment(segment) {
+  const from = sanitizeDoodlePoint(segment?.from)
+  const to = sanitizeDoodlePoint(segment?.to)
+  if (!from || !to) {
+    return null
+  }
+
+  return { from, to }
+}
+
+function sanitizeDoodlePoint(point) {
+  const x = Number(point?.x)
+  const y = Number(point?.y)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null
+  }
+
+  return {
+    x: Math.min(Math.max(x, 0), 1),
+    y: Math.min(Math.max(y, 0), 1)
+  }
+}
+
+function sanitizeLobbySummary(value) {
+  const roomId = sanitizeRoomId(value?.roomId)
+  const roomTitle = sanitizeRoomTitle(value?.roomTitle)
+  const capacity = sanitizeCapacity(value?.capacity)
+  const participants = Math.max(0, Math.min(Number(value?.participants ?? 0), capacity))
+  const updatedAt = Number(value?.updatedAt ?? Date.now())
+
+  if (!roomId || !roomTitle) {
+    return null
+  }
+
+  return {
+    roomId,
+    roomTitle,
+    capacity,
+    isPrivate: Boolean(value?.isPrivate),
+    participants,
+    updatedAt
+  }
+}
+
 function publicRoomMeta(room) {
   return {
+    roomId: sanitizeRoomId(room?.roomId),
     roomTitle: sanitizeRoomTitle(room?.roomTitle),
     capacity: sanitizeCapacity(room?.capacity),
     isPrivate: Boolean(room?.isPrivate)
+  }
+}
+
+function generateRoomIdentity() {
+  const word = ROOM_WORDS[randomInt(ROOM_WORDS.length)]
+  const digits = randomDigits(4)
+
+  return {
+    roomId: `${word}-${digits}`,
+    roomTitle: `${word.toUpperCase()}-${digits}`
   }
 }
 
@@ -650,6 +970,12 @@ function randomDigits(length) {
   const bytes = new Uint8Array(length)
   crypto.getRandomValues(bytes)
   return Array.from(bytes, (value) => String(value % 10)).join("")
+}
+
+function randomInt(max) {
+  const bytes = new Uint32Array(1)
+  crypto.getRandomValues(bytes)
+  return bytes[0] % max
 }
 
 async function parseRequestJson(request) {
@@ -677,6 +1003,7 @@ function json(payload, init = {}) {
       ...(init.headers ?? {})
     }
   })
+
   return withDefaultHeaders(response)
 }
 

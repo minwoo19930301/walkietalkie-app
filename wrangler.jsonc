@@ -13,6 +13,10 @@
       {
         "name": "ROOMS",
         "class_name": "SignalingRoom"
+      },
+      {
+        "name": "LOBBY",
+        "class_name": "LobbyRegistry"
       }
     ]
   },
@@ -21,6 +25,12 @@
       "tag": "v1",
       "new_sqlite_classes": [
         "SignalingRoom"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "LobbyRegistry"
       ]
     }
   ]

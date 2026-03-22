@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#14131f" />
+    <title>워키토키</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-view="setup">
+    <main class="app-shell">
+      <section class="view setup-view" id="setupView">
+        <div class="setup-stack">
+          <article class="stack-card hero-card">
+            <div class="hero-grid">
+              <div class="hero-copybox">
+                <p class="eyebrow">WalkieTalkie make by a Computer Illiterate</p>
+                <h1>컴맹이 만든<br />워키토키</h1>
+                <p class="hero-copy">
+                  처음 들어오면 랜덤 방 이름으로 바로 방을 준비합니다. 통화를 끊은 뒤에는
+                  대기실에서 현재 기다리는 방들을 보고 바로 들어갈 수 있습니다.
+                </p>
+              </div>
+
+              <div class="hero-art" aria-hidden="true">
+                <span class="signal-ring ring-1"></span>
+                <span class="signal-ring ring-2"></span>
+                <span class="signal-ring ring-3"></span>
+                <span class="signal-core"></span>
+              </div>
+            </div>
+
+            <div class="intro-panel" id="introPanel">
+              <div class="intro-pulse" aria-hidden="true">
+                <span class="intro-pulse-ring ring-a"></span>
+                <span class="intro-pulse-ring ring-b"></span>
+                <span class="intro-pulse-core"></span>
+              </div>
+              <p class="intro-lead">랜덤 방을 자동으로 준비하고 있습니다.</p>
+              <p class="intro-note">
+                초대받은 사람은 전달받은 링크를 누르면 바로 같은 방으로 들어옵니다.
+              </p>
+              <button id="openLobbyBtn" class="secondary-btn intro-alt-btn" type="button">
+                대기실 보기
+              </button>
+            </div>
+
+            <div class="lobby-panel hidden" id="lobbyPanel">
+              <div class="lobby-head">
+                <div>
+                  <p class="lobby-kicker">대기실</p>
+                  <h2>대기 중인 방</h2>
+                </div>
+                <button id="refreshLobbyBtn" class="secondary-btn mini-btn" type="button">
+                  새로고침
+                </button>
+              </div>
+
+              <form id="createForm" class="room-form">
+                <label class="check-field">
+                  <input id="isPrivateCheck" type="checkbox" />
+                  비공개방
+                </label>
+
+                <div id="createPinWrap" class="hidden">
+                  <label class="field-label" for="createPinInput">비밀번호 4자리</label>
+                  <input
+                    id="createPinInput"
+                    class="field-input"
+                    type="password"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    maxlength="4"
+                    placeholder="예: 1234"
+                  />
+                </div>
+
+                <button id="createRoomBtn" class="primary-btn" type="submit">
+                  새 랜덤 방 만들기
+                </button>
+              </form>
+
+              <section class="waiting-rooms-panel">
+                <div id="waitingRoomList" class="waiting-room-list"></div>
+              </section>
+            </div>
+
+            <p class="setup-status" id="setupStatusText">
+              처음에는 빠른 방으로 바로 들어가고, 통화 종료 후 여기서 다시 시작할 수 있습니다.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="view call-view hidden" id="callView" aria-hidden="true">
+        <div class="call-stage" id="callStage">
+          <div id="remoteGrid" class="remote-grid"></div>
+          <article id="localStageTile" class="peer-tile local-stage-tile hidden" aria-hidden="true">
+            <video id="localStageVideo" class="call-video hidden" playsinline autoplay muted></video>
+            <div class="peer-placeholder" id="localStagePlaceholder">
+              <strong>내 화면 준비 중</strong>
+              <span>내 영상이 이 위치에 들어갑니다.</span>
+            </div>
+            <div id="localStageChatBubble" class="chat-bubble hidden"></div>
+          </article>
+          <canvas id="doodleCanvas" class="doodle-canvas hidden"></canvas>
+          <div id="doodleNotice" class="doodle-notice hidden">낙서 중</div>
+          <div class="stage-placeholder" id="emptyStage">
+            <strong>상대방을 기다리는 중</strong>
+            <span>초대 링크를 보내면 받은 사람이 바로 같은 방으로 들어옵니다.</span>
+          </div>
+
+          <div class="call-copy">
+            <p class="status-line" id="statusText"></p>
+          </div>
+
+          <div class="local-stack">
+            <aside class="local-pip">
+              <video id="localVideo" class="call-video hidden" playsinline autoplay muted></video>
+              <div class="pip-placeholder" id="localPlaceholder">
+                <strong>카메라 준비 전</strong>
+                <span>권한을 허용하면 내 화면이 여기에 표시됩니다.</span>
+              </div>
+              <div id="localChatBubble" class="chat-bubble hidden"></div>
+            </aside>
+            <button id="mirrorBtn" class="mirror-btn" type="button" aria-label="좌우 반전">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 7 4 12l4 5" />
+                <path d="M16 7l4 5-4 5" />
+                <path d="M5 12h14" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="control-dock">
+            <button id="inviteBtn" class="icon-button" type="button" aria-label="초대 보기">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 15V5" />
+                <path d="m8 9 4-4 4 4" />
+                <path d="M5.5 14.5v2A2.5 2.5 0 0 0 8 19h8a2.5 2.5 0 0 0 2.5-2.5v-2" />
+              </svg>
+              <span class="icon-text">초대</span>
+            </button>
+            <button id="chatBtn" class="icon-button" type="button" aria-label="임시 채팅">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6.5 7.5A2.5 2.5 0 0 1 9 5h6a2.5 2.5 0 0 1 2.5 2.5v4A2.5 2.5 0 0 1 15 14H11l-3.5 3v-3H9A2.5 2.5 0 0 1 6.5 11.5v-4Z" />
+              </svg>
+              <span class="icon-text">채팅</span>
+            </button>
+            <button id="doodleBtn" class="icon-button" type="button" aria-label="낙서">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 16 7.8-7.8a2.2 2.2 0 1 1 3.1 3.1L9.1 19.1 5 20Z" />
+                <path d="M13 9l2 2" />
+              </svg>
+              <span class="icon-text">낙서</span>
+            </button>
+            <button id="toggleMicBtn" class="icon-button" type="button" disabled aria-label="마이크">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" />
+                <path d="M6 11.5a6 6 0 0 0 12 0" />
+                <path d="M12 17.5v3" />
+                <path d="M8.5 20.5h7" />
+                <path id="toggleMicOff" class="icon-off-indicator hidden" d="M5 5l14 14" />
+              </svg>
+              <span class="icon-text" id="toggleMicText">마이크</span>
+            </button>
+            <button id="toggleCameraBtn" class="icon-button" type="button" disabled aria-label="카메라">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4.5 8.5A2.5 2.5 0 0 1 7 6h7a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 14 18H7a2.5 2.5 0 0 1-2.5-2.5v-7Z" />
+                <path d="m16.5 10 3-1.8a1 1 0 0 1 1.5.86v5.88a1 1 0 0 1-1.5.86L16.5 14" />
+                <path id="toggleCameraOff" class="icon-off-indicator hidden" d="M4 5l16 14" />
+              </svg>
+              <span class="icon-text" id="toggleCameraText">카메라</span>
+            </button>
+            <button id="switchCameraBtn" class="icon-button" type="button" disabled aria-label="카메라 전환">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 9.5A2.5 2.5 0 0 1 9.5 7h5A2.5 2.5 0 0 1 17 9.5v5a2.5 2.5 0 0 1-2.5 2.5h-5A2.5 2.5 0 0 1 7 14.5v-5Z" />
+                <path d="M4 12a5.8 5.8 0 0 1 1.4-3.7" />
+                <path d="m4 8.3 1.8-.4.4 1.8" />
+                <path d="M20 12a5.8 5.8 0 0 1-1.4 3.7" />
+                <path d="m18.2 15.9 1.8.4-.4-1.8" />
+              </svg>
+              <span class="icon-text" id="switchCameraText">카메라 전환</span>
+            </button>
+            <button id="leaveBtn" class="icon-button end-button" type="button" disabled aria-label="통화 종료">
+              <svg class="control-icon hangup-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6.6 5.8c.5-.5 1.3-.7 2-.4l2.1 1c.8.4 1.1 1.3.8 2l-.8 1.6a12.7 12.7 0 0 0 3.3 3.3l1.6-.8c.7-.4 1.6 0 2 .8l1 2.1c.3.7.1 1.5-.4 2l-1.2 1.2c-.6.6-1.5.9-2.3.7-2.6-.7-5.3-2.3-7.6-4.7S3 9.9 2.3 7.3c-.2-.8 0-1.7.7-2.3l1.2-1.2Z" />
+              </svg>
+              <span class="icon-text">종료</span>
+            </button>
+          </div>
+
+          <div class="waiting-modal-backdrop hidden" id="waitingModal">
+            <div class="waiting-modal" role="dialog" aria-modal="true" aria-labelledby="waitingTitle">
+              <div class="modal-head">
+                <div>
+                  <p class="modal-kicker">초대</p>
+                  <h2 id="waitingTitle">방 이름을 보내거나 링크를 전달하세요</h2>
+                </div>
+                <button
+                  id="closeWaitingModalBtn"
+                  class="modal-close"
+                  type="button"
+                  aria-label="초대 닫기"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <p class="modal-copy">
+                상대방은 받은 링크를 누르면 바로 들어오고, 대기실에서는 이 방 이름으로도 찾을 수
+                있습니다.
+              </p>
+              <div class="room-code-box">
+                <span class="room-code-label">방 정보</span>
+                <strong id="roomNameDisplay">----</strong>
+              </div>
+              <p class="room-meta-line" id="roomCapacityDisplay">최대 인원 4명</p>
+              <button id="shareRoomBtn" class="primary-btn modal-share-btn" type="button">초대 전달</button>
+            </div>
+          </div>
+
+          <div class="waiting-modal-backdrop hidden" id="privateJoinModal">
+            <div class="waiting-modal" role="dialog" aria-modal="true" aria-labelledby="privateJoinTitle">
+              <div class="modal-head">
+                <div>
+                  <p class="modal-kicker">비공개방</p>
+                  <h2 id="privateJoinTitle">비밀번호 입력</h2>
+                </div>
+                <button
+                  id="closePrivateJoinModalBtn"
+                  class="modal-close"
+                  type="button"
+                  aria-label="비밀번호 입력 닫기"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <p class="modal-copy" id="privateJoinMetaText"></p>
+              <form id="privateJoinForm" class="room-form">
+                <label class="field-label" for="privateJoinPinInput">비밀번호 4자리</label>
+                <input
+                  id="privateJoinPinInput"
+                  class="field-input"
+                  type="password"
+                  inputmode="numeric"
+                  pattern="[0-9]*"
+                  maxlength="4"
+                  placeholder="예: 1234"
+                />
+                <div class="modal-actions">
+                  <button id="privateJoinSubmitBtn" class="primary-btn" type="submit">입장</button>
+                  <button id="privateJoinCancelBtn" class="secondary-btn" type="button">취소</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="waiting-modal-backdrop hidden" id="chatModal">
+            <div class="waiting-modal" role="dialog" aria-modal="true" aria-labelledby="chatTitle">
+              <div class="modal-head">
+                <div>
+                  <p class="modal-kicker">임시 채팅</p>
+                  <h2 id="chatTitle">3초 동안만 띄우기</h2>
+                </div>
+                <button
+                  id="closeChatModalBtn"
+                  class="modal-close"
+                  type="button"
+                  aria-label="채팅 닫기"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <p class="modal-copy">
+                보내면 말풍선이 잠깐만 보였다가 사라집니다.
+              </p>
+              <form id="chatForm" class="room-form">
+                <input
+                  id="chatInput"
+                  class="field-input"
+                  type="text"
+                  maxlength="60"
+                  placeholder="예: 잠깐만요 / 곧 들어가요"
+                />
+                <div class="modal-actions">
+                  <button id="sendChatBtn" class="primary-btn" type="submit">보내기</button>
+                  <button id="cancelChatBtn" class="secondary-btn" type="button">취소</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="waiting-modal-backdrop hidden" id="connectionHelpModal">
+            <div
+              class="waiting-modal help-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="connectionHelpTitle"
+            >
+              <div class="modal-head">
+                <div>
+                  <p class="modal-kicker">연결 가이드</p>
+                  <h2 id="connectionHelpTitle">연결이 바로 안 될 때 해볼 것</h2>
+                </div>
+                <button
+                  id="closeConnectionHelpBtn"
+                  class="modal-close"
+                  type="button"
+                  aria-label="연결 가이드 닫기"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <p class="modal-copy">
+                네트워크 상태에 따라 바로 연결되지 않을 수 있습니다. 아래 순서대로 다시
+                확인해보세요.
+              </p>
+              <ol class="help-list">
+                <li>같은 초대 링크로 들어왔는지 확인</li>
+                <li>와이파이와 모바일 데이터를 바꿔서 다시 시도</li>
+                <li>VPN, 광고 차단, 사설 네트워크 기능을 잠시 꺼보고 재시도</li>
+                <li>앱을 닫았다가 다시 같은 링크로 입장</li>
+              </ol>
+              <div class="modal-actions">
+                <button id="retryConnectionBtn" class="primary-btn" type="button">다시 시도</button>
+                <button id="dismissConnectionHelpBtn" class="secondary-btn" type="button">
+                  닫기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

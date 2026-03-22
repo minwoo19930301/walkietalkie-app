@@ -1,8 +1,7 @@
-const STORAGE_PREFIX = "walkietalkie"
 const DEFAULT_DISPLAY_NAME = "참여자"
-const ROOM_CODE_REGEX = /^\d{4}$/
+const ROOM_ID_REGEX = /^\d{6}$/
 const PIN_REGEX = /^\d{4}$/
-const ALLOWED_CAPACITIES = new Set([4, 6, 8])
+const DEFAULT_ROOM_CAPACITY = 8
 
 const DEFAULT_ICE_SERVERS = [
   {
@@ -15,57 +14,72 @@ const SOCKET_PONG_TIMEOUT_MS = 30000
 const SIGNALING_RECONNECT_BASE_DELAY_MS = 1200
 const MAX_SIGNALING_RECONNECT_ATTEMPTS = 4
 
-const clientId =
-  sessionStorage.getItem(`${STORAGE_PREFIX}.clientId`) ?? `wt-${crypto.randomUUID()}`
-
-sessionStorage.setItem(`${STORAGE_PREFIX}.clientId`, clientId)
+const clientId = sessionStorage.getItem("walkietalkie.clientId") ?? `wt-${crypto.randomUUID()}`
+sessionStorage.setItem("walkietalkie.clientId", clientId)
 
 const elements = {
   setupView: document.querySelector("#setupView"),
   callView: document.querySelector("#callView"),
-  waitingModal: document.querySelector("#waitingModal"),
-  connectionHelpModal: document.querySelector("#connectionHelpModal"),
+  callStage: document.querySelector("#callStage"),
   introPanel: document.querySelector("#introPanel"),
   lobbyPanel: document.querySelector("#lobbyPanel"),
-  directJoinSwitchBtn: document.querySelector("#directJoinSwitchBtn"),
-  displayNameInput: document.querySelector("#displayNameInput"),
-  createModeBtn: document.querySelector("#createModeBtn"),
-  joinModeBtn: document.querySelector("#joinModeBtn"),
+  openLobbyBtn: document.querySelector("#openLobbyBtn"),
   createForm: document.querySelector("#createForm"),
-  joinForm: document.querySelector("#joinForm"),
-  roomTitleInput: document.querySelector("#roomTitleInput"),
-  capacitySelect: document.querySelector("#capacitySelect"),
   isPrivateCheck: document.querySelector("#isPrivateCheck"),
   createPinWrap: document.querySelector("#createPinWrap"),
   createPinInput: document.querySelector("#createPinInput"),
-  joinRoomCodeInput: document.querySelector("#joinRoomCodeInput"),
-  joinPinInput: document.querySelector("#joinPinInput"),
-  setupStatusText: document.querySelector("#setupStatusText"),
   createRoomBtn: document.querySelector("#createRoomBtn"),
-  joinRoomBtn: document.querySelector("#joinRoomBtn"),
-  inviteBtn: document.querySelector("#inviteBtn"),
-  shareRoomBtn: document.querySelector("#shareRoomBtn"),
+  refreshLobbyBtn: document.querySelector("#refreshLobbyBtn"),
+  waitingRoomList: document.querySelector("#waitingRoomList"),
+  setupStatusText: document.querySelector("#setupStatusText"),
+  waitingModal: document.querySelector("#waitingModal"),
+  connectionHelpModal: document.querySelector("#connectionHelpModal"),
+  privateJoinModal: document.querySelector("#privateJoinModal"),
+  chatModal: document.querySelector("#chatModal"),
   closeWaitingModalBtn: document.querySelector("#closeWaitingModalBtn"),
   closeConnectionHelpBtn: document.querySelector("#closeConnectionHelpBtn"),
   dismissConnectionHelpBtn: document.querySelector("#dismissConnectionHelpBtn"),
   retryConnectionBtn: document.querySelector("#retryConnectionBtn"),
+  privateJoinForm: document.querySelector("#privateJoinForm"),
+  privateJoinPinInput: document.querySelector("#privateJoinPinInput"),
+  privateJoinMetaText: document.querySelector("#privateJoinMetaText"),
+  closePrivateJoinModalBtn: document.querySelector("#closePrivateJoinModalBtn"),
+  privateJoinCancelBtn: document.querySelector("#privateJoinCancelBtn"),
+  privateJoinSubmitBtn: document.querySelector("#privateJoinSubmitBtn"),
+  chatForm: document.querySelector("#chatForm"),
+  chatInput: document.querySelector("#chatInput"),
+  closeChatModalBtn: document.querySelector("#closeChatModalBtn"),
+  cancelChatBtn: document.querySelector("#cancelChatBtn"),
+  sendChatBtn: document.querySelector("#sendChatBtn"),
+  roomNameDisplay: document.querySelector("#roomNameDisplay"),
+  roomCapacityDisplay: document.querySelector("#roomCapacityDisplay"),
+  inviteBtn: document.querySelector("#inviteBtn"),
+  chatBtn: document.querySelector("#chatBtn"),
+  doodleBtn: document.querySelector("#doodleBtn"),
+  shareRoomBtn: document.querySelector("#shareRoomBtn"),
   toggleMicBtn: document.querySelector("#toggleMicBtn"),
   toggleMicOff: document.querySelector("#toggleMicOff"),
   toggleMicText: document.querySelector("#toggleMicText"),
   toggleCameraBtn: document.querySelector("#toggleCameraBtn"),
   toggleCameraOff: document.querySelector("#toggleCameraOff"),
   toggleCameraText: document.querySelector("#toggleCameraText"),
+  mirrorBtn: document.querySelector("#mirrorBtn"),
+  switchCameraBtn: document.querySelector("#switchCameraBtn"),
+  switchCameraText: document.querySelector("#switchCameraText"),
   leaveBtn: document.querySelector("#leaveBtn"),
   statusText: document.querySelector("#statusText"),
-  callTitle: document.querySelector("#callTitle"),
+  localStack: document.querySelector(".local-stack"),
   localVideo: document.querySelector("#localVideo"),
   localPlaceholder: document.querySelector("#localPlaceholder"),
+  localChatBubble: document.querySelector("#localChatBubble"),
+  localStageTile: document.querySelector("#localStageTile"),
+  localStageVideo: document.querySelector("#localStageVideo"),
+  localStagePlaceholder: document.querySelector("#localStagePlaceholder"),
+  localStageChatBubble: document.querySelector("#localStageChatBubble"),
   remoteGrid: document.querySelector("#remoteGrid"),
   emptyStage: document.querySelector("#emptyStage"),
-  roomCodeDisplay: document.querySelector("#roomCodeDisplay"),
-  roomPinWrap: document.querySelector("#roomPinWrap"),
-  roomPinDisplay: document.querySelector("#roomPinDisplay"),
-  roomCapacityDisplay: document.querySelector("#roomCapacityDisplay")
+  doodleCanvas: document.querySelector("#doodleCanvas"),
+  doodleNotice: document.querySelector("#doodleNotice")
 }
 
 const DEFAULT_MEDIA_STATE = {
@@ -76,15 +90,24 @@ const DEFAULT_MEDIA_STATE = {
 
 const state = {
   clientId,
-  mode: "create",
   setupStage: "intro",
   room: null,
+  lobbyRooms: [],
+  pendingPrivateJoin: null,
   socket: null,
   localStream: null,
+  microphoneTrack: null,
+  cameraTrack: null,
+  preferredFacingMode: "user",
+  currentVideoDeviceId: "",
   peers: new Map(),
   isJoining: false,
   isLeaving: false,
   isResetting: false,
+  isMirrored: true,
+  isDoodleMode: false,
+  isDrawingDoodle: false,
+  lastDoodlePoint: null,
   selfMedia: {
     audioEnabled: true,
     videoEnabled: true,
@@ -97,6 +120,10 @@ const state = {
   lastPongAt: 0,
   waitingModalDismissed: false,
   quickStartTimer: null,
+  lobbyFetchToken: 0,
+  chatTimers: new Map(),
+  doodleLayers: new Map(),
+  doodleContext: null,
   networkOnline: navigator.onLine,
   wakeLock: null
 }
@@ -105,17 +132,33 @@ bindEvents()
 bootstrap()
 
 function bindEvents() {
-  elements.directJoinSwitchBtn.addEventListener("click", openLobbyFromIntro)
-  elements.createModeBtn.addEventListener("click", () => setMode("create"))
-  elements.joinModeBtn.addEventListener("click", () => setMode("join"))
+  elements.openLobbyBtn.addEventListener("click", () => {
+    showLobby("대기실에서 현재 기다리는 방을 볼 수 있습니다.")
+  })
   elements.isPrivateCheck.addEventListener("change", toggleCreatePinVisibility)
   elements.createForm.addEventListener("submit", (event) => {
     void handleCreateSubmit(event)
   })
-  elements.joinForm.addEventListener("submit", (event) => {
-    void handleJoinSubmit(event)
+  elements.refreshLobbyBtn.addEventListener("click", () => {
+    void refreshLobbyRooms()
   })
+  elements.waitingRoomList.addEventListener("click", (event) => {
+    handleLobbyListClick(event)
+  })
+  elements.privateJoinForm.addEventListener("submit", (event) => {
+    void handlePrivateJoinSubmit(event)
+  })
+  elements.privateJoinCancelBtn.addEventListener("click", closePrivateJoinModal)
+  elements.closePrivateJoinModalBtn.addEventListener("click", closePrivateJoinModal)
+  elements.chatForm.addEventListener("submit", (event) => {
+    void handleChatSubmit(event)
+  })
+  elements.closeChatModalBtn.addEventListener("click", closeChatModal)
+  elements.cancelChatBtn.addEventListener("click", closeChatModal)
+
   elements.inviteBtn.addEventListener("click", openWaitingModal)
+  elements.chatBtn.addEventListener("click", openChatModal)
+  elements.doodleBtn.addEventListener("click", toggleDoodleMode)
   elements.shareRoomBtn.addEventListener("click", () => {
     void shareRoomInvite()
   })
@@ -125,11 +168,15 @@ function bindEvents() {
   elements.retryConnectionBtn.addEventListener("click", () => {
     void retryCurrentCall()
   })
+  elements.toggleMicBtn.addEventListener("click", toggleMicrophone)
+  elements.toggleCameraBtn.addEventListener("click", toggleCamera)
+  elements.mirrorBtn.addEventListener("click", toggleMirror)
+  elements.switchCameraBtn.addEventListener("click", () => {
+    void switchCameraFacing()
+  })
   elements.leaveBtn.addEventListener("click", () => {
     void leaveCall()
   })
-  elements.toggleMicBtn.addEventListener("click", toggleMicrophone)
-  elements.toggleCameraBtn.addEventListener("click", toggleCamera)
 
   elements.waitingModal.addEventListener("click", (event) => {
     if (event.target === elements.waitingModal) {
@@ -141,11 +188,23 @@ function bindEvents() {
       closeConnectionHelpModal()
     }
   })
+  elements.privateJoinModal.addEventListener("click", (event) => {
+    if (event.target === elements.privateJoinModal) {
+      closePrivateJoinModal()
+    }
+  })
+  elements.chatModal.addEventListener("click", (event) => {
+    if (event.target === elements.chatModal) {
+      closeChatModal()
+    }
+  })
 
   window.addEventListener("online", handleNetworkOnline)
   window.addEventListener("offline", handleNetworkOffline)
   document.addEventListener("visibilitychange", handleVisibilityChange)
+  window.addEventListener("resize", resizeDoodleCanvas)
   window.addEventListener("beforeunload", () => {
+    clearQuickStartTimer()
     stopSocketHeartbeat()
     clearSignalingReconnectTimer()
     if (state.socket?.readyState === WebSocket.OPEN) {
@@ -155,25 +214,21 @@ function bindEvents() {
 }
 
 function bootstrap() {
-  const savedDisplayName = localStorage.getItem(`${STORAGE_PREFIX}.displayName`)
-  state.displayName = sanitizeName(savedDisplayName || DEFAULT_DISPLAY_NAME)
-  elements.displayNameInput.value = state.displayName
-  elements.roomTitleInput.value = `${state.displayName}의 방`
-  elements.capacitySelect.value = "4"
   elements.isPrivateCheck.checked = false
   elements.createPinInput.value = ""
-  elements.joinRoomCodeInput.value = ""
-  elements.joinPinInput.value = ""
+  elements.privateJoinPinInput.value = ""
+  elements.chatInput.value = ""
 
-  setMode("create")
   toggleCreatePinVisibility()
   hideWaitingModal({ manual: false })
   hideConnectionHelpModal()
+  hidePrivateJoinModal()
+  hideChatModal()
+  initializeDoodleCanvas()
   updateRoomMetaUI()
   renderRemoteStageState()
   renderLocalPreviewState()
   setView("setup")
-  setStatus("빠른 방을 자동으로 준비하는 중입니다.")
   updateControls()
 
   const sharedRoom = parseSharedRoomFromUrl()
@@ -189,39 +244,36 @@ function beginQuickStartFlow() {
   clearQuickStartTimer()
   setSetupStage("intro")
   setView("setup")
-  setStatus("개인 방을 자동으로 준비하는 중입니다.")
+  setStatus("랜덤 방을 자동으로 준비하는 중입니다.")
 
   state.quickStartTimer = window.setTimeout(() => {
     state.quickStartTimer = null
-    void createQuickRoom()
-  }, 1100)
+    void createRoom({
+      capacity: DEFAULT_ROOM_CAPACITY,
+      isPrivate: false,
+      pin: ""
+    })
+  }, 1000)
 }
 
 function beginSharedRoomEntry(sharedRoom) {
   clearQuickStartTimer()
   setSetupStage("intro")
   setView("setup")
-  elements.joinRoomCodeInput.value = sharedRoom.code
-  elements.joinPinInput.value = sharedRoom.pin ?? ""
   setStatus("공유받은 방으로 바로 들어가는 중입니다.")
 
   state.quickStartTimer = window.setTimeout(() => {
     state.quickStartTimer = null
-    void joinSharedRoom(sharedRoom)
+    void joinRoomById(sharedRoom.roomId, sharedRoom.pin, { fromShared: true })
   }, 500)
 }
 
-function openLobbyFromIntro() {
-  clearQuickStartTimer()
-  setMode("join")
-  showLobby("방 키가 있으면 여기서 바로 입장할 수 있습니다.")
-}
-
-function showLobby(message = "통화를 끊으면 여기서 다시 시작할 수 있습니다.") {
+function showLobby(message = "대기실을 불러왔습니다.") {
   clearQuickStartTimer()
   setSetupStage("lobby")
   setView("setup")
   setStatus(message)
+  void refreshLobbyRooms()
 }
 
 function setSetupStage(stage) {
@@ -239,113 +291,11 @@ function clearQuickStartTimer() {
   state.quickStartTimer = null
 }
 
-function setMode(mode) {
-  if (state.isJoining) {
-    return
-  }
-
-  state.mode = mode === "join" ? "join" : "create"
-  const isCreate = state.mode === "create"
-  elements.createModeBtn.classList.toggle("active", isCreate)
-  elements.joinModeBtn.classList.toggle("active", !isCreate)
-  elements.createForm.classList.toggle("hidden", !isCreate)
-  elements.joinForm.classList.toggle("hidden", isCreate)
-}
-
 function toggleCreatePinVisibility() {
   const visible = elements.isPrivateCheck.checked
   elements.createPinWrap.classList.toggle("hidden", !visible)
   if (!visible) {
     elements.createPinInput.value = ""
-  }
-}
-
-async function createQuickRoom() {
-  if (state.isJoining) {
-    return
-  }
-
-  readAndPersistDisplayName()
-  setSetupBusy(true)
-  setStatus("빠른 방을 만들고 있습니다...")
-
-  try {
-    const payload = await fetchJsonOrThrow("/api/rooms", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        title: `${state.displayName}의 빠른 방`,
-        capacity: 4,
-        isPrivate: false,
-        pin: ""
-      })
-    })
-
-    state.room = {
-      code: payload.roomCode,
-      roomTitle: payload.roomTitle,
-      capacity: payload.capacity,
-      isPrivate: payload.isPrivate,
-      pin: ""
-    }
-    applyRoomQueryToUrl(state.room)
-    updateRoomMetaUI()
-    await joinCurrentRoom()
-  } catch (error) {
-    state.room = null
-    clearRoomQueryFromUrl()
-    showLobby(readErrorMessage(error, "자동 방 생성에 실패했습니다. 여기서 다시 시작해 주세요."))
-  } finally {
-    setSetupBusy(false)
-  }
-}
-
-async function joinSharedRoom(sharedRoom) {
-  if (state.isJoining) {
-    return
-  }
-
-  readAndPersistDisplayName()
-  setSetupBusy(true)
-
-  try {
-    const payload = await fetchJsonOrThrow(`/api/rooms/${sharedRoom.code}/join`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        pin: sharedRoom.pin ?? ""
-      })
-    })
-
-    state.room = {
-      code: sharedRoom.code,
-      roomTitle: payload.roomTitle,
-      capacity: payload.capacity,
-      isPrivate: payload.isPrivate,
-      pin: payload.isPrivate ? sharedRoom.pin ?? "" : ""
-    }
-
-    if (state.room.isPrivate && !PIN_REGEX.test(state.room.pin)) {
-      clearRoomQueryFromUrl()
-      showLobby("이 방은 비공개방입니다. 비밀번호 4자리를 입력해 주세요.")
-      setMode("join")
-      return
-    }
-
-    applyRoomQueryToUrl(state.room)
-    updateRoomMetaUI()
-    await joinCurrentRoom()
-  } catch (error) {
-    state.room = null
-    clearRoomQueryFromUrl()
-    showLobby(readErrorMessage(error, "공유된 방에 들어가지 못했습니다. 방 키를 다시 확인해 주세요."))
-    setMode("join")
-  } finally {
-    setSetupBusy(false)
   }
 }
 
@@ -355,25 +305,29 @@ async function handleCreateSubmit(event) {
     return
   }
 
-  const displayName = readAndPersistDisplayName()
-  const roomTitleRaw = elements.roomTitleInput.value.trim()
-  const roomTitle = roomTitleRaw || `${displayName}의 방`
-  const capacity = Number(elements.capacitySelect.value)
   const isPrivate = elements.isPrivateCheck.checked
   const pin = onlyDigits(elements.createPinInput.value).slice(0, 4)
-
-  if (!ALLOWED_CAPACITIES.has(capacity)) {
-    setStatus("최대 인원은 4명, 6명, 8명 중에서 선택해 주세요.")
-    return
-  }
 
   if (isPrivate && !PIN_REGEX.test(pin)) {
     setStatus("비공개방은 비밀번호 4자리를 입력해 주세요.")
     return
   }
 
+  await createRoom({
+    capacity: DEFAULT_ROOM_CAPACITY,
+    isPrivate,
+    pin
+  })
+}
+
+async function createRoom({ capacity, isPrivate, pin }) {
+  if (state.isJoining) {
+    return
+  }
+
+  clearQuickStartTimer()
   setSetupBusy(true)
-  setStatus("방을 생성하는 중입니다...")
+  setStatus("새 랜덤 방을 만들고 있습니다...")
 
   try {
     const payload = await fetchJsonOrThrow("/api/rooms", {
@@ -382,7 +336,6 @@ async function handleCreateSubmit(event) {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        title: roomTitle,
         capacity,
         isPrivate,
         pin
@@ -390,8 +343,8 @@ async function handleCreateSubmit(event) {
     })
 
     state.room = {
-      code: payload.roomCode,
-      roomTitle: payload.roomTitle,
+      id: payload.roomId,
+      title: payload.roomTitle,
       capacity: payload.capacity,
       isPrivate: payload.isPrivate,
       pin: payload.isPrivate ? pin : ""
@@ -399,40 +352,154 @@ async function handleCreateSubmit(event) {
     state.waitingModalDismissed = false
     applyRoomQueryToUrl(state.room)
     updateRoomMetaUI()
-    setStatus(`방 키 ${state.room.code} 생성 완료. 통화 화면으로 전환합니다.`)
     await joinCurrentRoom()
   } catch (error) {
-    setStatus(readErrorMessage(error, "방 생성에 실패했습니다. 잠시 후 다시 시도해 주세요."))
+    state.room = null
+    clearRoomQueryFromUrl()
+    showLobby(readErrorMessage(error, "방 생성에 실패했습니다. 대기실에서 다시 시도해 주세요."))
   } finally {
     setSetupBusy(false)
   }
 }
 
-async function handleJoinSubmit(event) {
+async function refreshLobbyRooms() {
+  const token = ++state.lobbyFetchToken
+  renderLobbyLoading()
+
+  try {
+    const payload = await fetchJsonOrThrow("/api/lobby")
+    if (token !== state.lobbyFetchToken) {
+      return
+    }
+
+    state.lobbyRooms = Array.isArray(payload.rooms) ? payload.rooms : []
+    renderLobbyRooms()
+  } catch (error) {
+    if (token !== state.lobbyFetchToken) {
+      return
+    }
+
+    state.lobbyRooms = []
+    elements.waitingRoomList.innerHTML =
+      '<div class="waiting-room-empty"><strong>대기실을 불러오지 못했습니다.</strong><span>잠시 후 다시 새로고침해 주세요.</span></div>'
+    setStatus(readErrorMessage(error, "대기 중인 방 목록을 불러오지 못했습니다."))
+  }
+}
+
+function renderLobbyLoading() {
+  elements.waitingRoomList.innerHTML =
+    '<div class="waiting-room-empty"><strong>대기 중인 방을 불러오는 중</strong><span>잠시만 기다려 주세요.</span></div>'
+}
+
+function renderLobbyRooms() {
+  if (state.lobbyRooms.length === 0) {
+    elements.waitingRoomList.innerHTML =
+      '<div class="waiting-room-empty"><strong>지금 대기 중인 방이 없습니다.</strong><span>새 랜덤 방을 만들면 여기 목록에도 바로 표시됩니다.</span></div>'
+    return
+  }
+
+  const fragment = document.createDocumentFragment()
+
+  for (const room of state.lobbyRooms) {
+    const card = document.createElement("article")
+    card.className = "waiting-room-card"
+
+    const copy = document.createElement("div")
+    copy.className = "waiting-room-copy"
+
+    const title = document.createElement("strong")
+    title.className = "waiting-room-title"
+    title.textContent = room.roomTitle
+
+    const meta = document.createElement("p")
+    meta.className = "waiting-room-meta"
+    meta.textContent = `${room.participants}명 입장 중`
+
+    copy.append(title, meta)
+
+    if (room.isPrivate) {
+      const badge = document.createElement("span")
+      badge.className = "waiting-room-badge"
+      badge.textContent = "비공개"
+      copy.append(badge)
+    }
+
+    const joinButton = document.createElement("button")
+    joinButton.className = room.isPrivate ? "secondary-btn waiting-room-btn" : "primary-btn waiting-room-btn"
+    joinButton.type = "button"
+    joinButton.dataset.joinRoomId = room.roomId
+    joinButton.textContent = room.isPrivate ? "비밀번호로 입장" : "바로 입장"
+
+    card.append(copy, joinButton)
+    fragment.append(card)
+  }
+
+  elements.waitingRoomList.replaceChildren(fragment)
+}
+
+function handleLobbyListClick(event) {
+  const joinButton = event.target.closest("[data-join-room-id]")
+  if (!joinButton) {
+    return
+  }
+
+  const room = state.lobbyRooms.find((item) => item.roomId === joinButton.dataset.joinRoomId)
+  if (!room) {
+    return
+  }
+
+  if (room.isPrivate) {
+    openPrivateJoinModal(room)
+    return
+  }
+
+  void joinRoomById(room.roomId, "")
+}
+
+function openPrivateJoinModal(room) {
+  state.pendingPrivateJoin = room
+  elements.privateJoinPinInput.value = ""
+  elements.privateJoinMetaText.textContent = `${room.roomTitle} · ${room.participants}명 입장 중`
+  elements.privateJoinModal.classList.remove("hidden")
+}
+
+function closePrivateJoinModal() {
+  hidePrivateJoinModal()
+}
+
+function hidePrivateJoinModal() {
+  state.pendingPrivateJoin = null
+  elements.privateJoinPinInput.value = ""
+  elements.privateJoinModal.classList.add("hidden")
+}
+
+async function handlePrivateJoinSubmit(event) {
   event.preventDefault()
+  if (!state.pendingPrivateJoin || state.isJoining) {
+    return
+  }
+
+  const pin = onlyDigits(elements.privateJoinPinInput.value).slice(0, 4)
+  if (!PIN_REGEX.test(pin)) {
+    setStatus("비밀번호 4자리를 입력해 주세요.")
+    return
+  }
+
+  await joinRoomById(state.pendingPrivateJoin.roomId, pin)
+}
+
+async function joinRoomById(roomId, pin = "", options = {}) {
   if (state.isJoining) {
     return
   }
 
-  const displayName = readAndPersistDisplayName()
-  const roomCode = onlyDigits(elements.joinRoomCodeInput.value).slice(0, 4)
-  const pin = onlyDigits(elements.joinPinInput.value).slice(0, 4)
-
-  if (!ROOM_CODE_REGEX.test(roomCode)) {
-    setStatus("방 키는 숫자 4자리입니다.")
-    return
-  }
-
-  if (pin && !PIN_REGEX.test(pin)) {
-    setStatus("비밀번호는 숫자 4자리로 입력해 주세요.")
-    return
-  }
-
+  const { fromShared = false } = options
+  clearQuickStartTimer()
   setSetupBusy(true)
   setStatus("방 입장 가능 여부를 확인하는 중입니다...")
 
   try {
-    const payload = await fetchJsonOrThrow(`/api/rooms/${roomCode}/join`, {
+    const payload = await fetchJsonOrThrow(`/api/rooms/${roomId}/join`, {
       method: "POST",
       headers: {
         "content-type": "application/json"
@@ -443,25 +510,26 @@ async function handleJoinSubmit(event) {
     })
 
     state.room = {
-      code: roomCode,
-      roomTitle: payload.roomTitle,
+      id: payload.roomId,
+      title: payload.roomTitle,
       capacity: payload.capacity,
       isPrivate: payload.isPrivate,
       pin: payload.isPrivate ? pin : ""
     }
-
-    if (state.room.isPrivate && !PIN_REGEX.test(state.room.pin)) {
-      setStatus("비공개방입니다. 비밀번호 4자리를 입력해 주세요.")
-      return
-    }
-
     state.waitingModalDismissed = false
+    hidePrivateJoinModal()
     applyRoomQueryToUrl(state.room)
     updateRoomMetaUI()
-    setStatus(`${displayName} 님으로 방 ${roomCode}에 입장합니다.`)
     await joinCurrentRoom()
   } catch (error) {
-    setStatus(readErrorMessage(error, "방 입장에 실패했습니다. 방 키를 다시 확인해 주세요."))
+    const message = readErrorMessage(error, "방 입장에 실패했습니다.")
+    state.room = null
+    clearRoomQueryFromUrl()
+    if (fromShared) {
+      showLobby(message)
+    } else {
+      setStatus(message)
+    }
   } finally {
     setSetupBusy(false)
   }
@@ -484,8 +552,8 @@ async function joinCurrentRoom(options = {}) {
   try {
     await prepareLocalMedia()
     await requestWakeLockIfSupported()
-    await openSignalingSocket(state.displayName)
-    setStatus("대기실에 입장했습니다. 다른 참여자를 기다리는 중입니다.")
+    await openSignalingSocket()
+    setStatus("방에 들어왔습니다. 다른 참여자를 기다리는 중입니다.")
     syncWaitingModal()
   } catch (error) {
     console.error(error)
@@ -497,6 +565,7 @@ async function joinCurrentRoom(options = {}) {
       returnToSetup: !reuseCurrentView,
       preserveRoom: reuseCurrentView
     })
+
     if (reuseCurrentView) {
       setStatus(failureMessage)
       openConnectionHelpModal()
@@ -510,7 +579,7 @@ async function joinCurrentRoom(options = {}) {
 }
 
 async function prepareLocalMedia() {
-  stopTracks(state.localStream)
+  stopLocalCaptureTracks()
   let stream = null
 
   try {
@@ -536,23 +605,69 @@ async function prepareLocalMedia() {
     setStatus("카메라 권한이 없어 이번 통화는 음성 중심으로 시작합니다.")
   }
 
-  state.localStream = stream
-  state.selfMedia = readLocalMediaState()
-  elements.localVideo.srcObject = stream
-  renderLocalPreviewState()
+  state.microphoneTrack = stream.getAudioTracks()[0] ?? null
+  state.cameraTrack = stream.getVideoTracks()[0] ?? null
+  state.currentVideoDeviceId = state.cameraTrack?.getSettings?.().deviceId ?? ""
+  state.preferredFacingMode = state.cameraTrack?.getSettings?.().facingMode ?? "user"
+  applyActiveLocalStream()
 }
 
-function openSignalingSocket(displayName) {
+function applyActiveLocalStream() {
+  const tracks = []
+  if (state.microphoneTrack) {
+    tracks.push(state.microphoneTrack)
+  }
+
+  const activeVideoTrack = getActiveVideoTrack()
+  if (activeVideoTrack) {
+    tracks.push(activeVideoTrack)
+  }
+
+  state.localStream = new MediaStream(tracks)
+  elements.localVideo.srcObject = state.localStream
+  elements.localStageVideo.srcObject = state.localStream
+  state.selfMedia = readLocalMediaState()
+  renderLocalPreviewState()
+  updateControls()
+}
+
+function getActiveVideoTrack() {
+  return state.cameraTrack
+}
+
+function stopLocalCaptureTracks() {
+  const tracks = new Set()
+  for (const track of state.localStream?.getTracks() ?? []) {
+    tracks.add(track)
+  }
+  if (state.microphoneTrack) {
+    tracks.add(state.microphoneTrack)
+  }
+  if (state.cameraTrack) {
+    tracks.add(state.cameraTrack)
+  }
+  for (const track of tracks) {
+    track.stop()
+  }
+
+  state.localStream = null
+  state.microphoneTrack = null
+  state.cameraTrack = null
+  state.currentVideoDeviceId = ""
+  state.preferredFacingMode = "user"
+}
+
+function openSignalingSocket() {
   return new Promise((resolve, reject) => {
     if (!state.room) {
       reject(new Error("입장할 방 정보가 없습니다."))
       return
     }
 
-    const url = new URL(`/api/rooms/${state.room.code}/ws`, location.origin)
+    const url = new URL(`/api/rooms/${state.room.id}/ws`, location.origin)
     url.protocol = location.protocol === "https:" ? "wss:" : "ws:"
     url.searchParams.set("clientId", state.clientId)
-    url.searchParams.set("name", displayName)
+    url.searchParams.set("name", DEFAULT_DISPLAY_NAME)
     if (state.room.pin) {
       url.searchParams.set("pin", state.room.pin)
     }
@@ -628,7 +743,7 @@ async function handleSocketMessage(rawMessage) {
       }
       state.waitingModalDismissed = false
       updateRoomMetaUI()
-      setStatus("대기실에 입장했습니다. 참여자를 기다리는 중입니다.")
+      setStatus("방에 입장했습니다. 참여자를 기다리는 중입니다.")
       syncWaitingModal()
       break
     case "room-state":
@@ -639,6 +754,15 @@ async function handleSocketMessage(rawMessage) {
       break
     case "presence":
       applyPeerPresence(message.from, message.media)
+      break
+    case "chat":
+      showEphemeralChat(message.from, message.text)
+      break
+    case "doodle":
+      applyRemoteDoodle(message.from, message.segment)
+      break
+    case "doodle-clear":
+      clearDoodleLayer(message.from)
       break
     case "peer-left":
       removePeer(message.from)
@@ -678,7 +802,7 @@ async function handleRoomState(message) {
     updatePeerTile(peer)
   }
 
-  for (const peerId of state.peers.keys()) {
+  for (const peerId of Array.from(state.peers.keys())) {
     if (!activePeerIds.has(peerId)) {
       removePeer(peerId)
     }
@@ -700,7 +824,7 @@ async function handleRoomState(message) {
 
   const connectedCount = peerMembers.length + 1
   if (peerMembers.length === 0) {
-    setStatus("대기실에서 다른 참여자를 기다리는 중입니다.")
+    setStatus("상대방을 기다리는 중입니다.")
   } else {
     setStatus(`현재 ${connectedCount}명 연결됨 (최대 ${state.room?.capacity ?? 4}명)`)
   }
@@ -713,19 +837,79 @@ function mergeRoomMeta(roomMeta) {
 
   state.room = {
     ...state.room,
-    roomTitle:
+    id: sanitizeRoomId(roomMeta.roomId) || state.room.id,
+    title:
       typeof roomMeta.roomTitle === "string" && roomMeta.roomTitle.trim()
         ? roomMeta.roomTitle.trim()
-        : state.room.roomTitle,
-    capacity: ALLOWED_CAPACITIES.has(Number(roomMeta.capacity))
-      ? Number(roomMeta.capacity)
-      : state.room.capacity,
+        : state.room.title,
+    capacity: sanitizeCapacityValue(roomMeta.capacity),
     isPrivate: Boolean(roomMeta.isPrivate)
   }
 }
 
 function shouldInitiateOffer(peerId) {
   return state.clientId.localeCompare(peerId) > 0
+}
+
+function addLocalTracksToConnection(connection) {
+  if (!connection || !state.localStream) {
+    return
+  }
+
+  const existingKinds = new Set(
+    connection
+      .getSenders()
+      .map((sender) => sender.track?.kind)
+      .filter(Boolean)
+  )
+
+  for (const track of state.localStream.getTracks()) {
+    if (existingKinds.has(track.kind)) {
+      continue
+    }
+    connection.addTrack(track, state.localStream)
+  }
+}
+
+async function syncPeerSenders() {
+  const audioTrack = state.microphoneTrack
+  const videoTrack = getActiveVideoTrack()
+
+  for (const [peerId, peer] of state.peers.entries()) {
+    const connection = peer.connection
+    if (!connection) {
+      continue
+    }
+
+    let needsRenegotiation = false
+    needsRenegotiation =
+      (await syncConnectionSender(connection, "audio", audioTrack)) || needsRenegotiation
+    needsRenegotiation =
+      (await syncConnectionSender(connection, "video", videoTrack)) || needsRenegotiation
+
+    if (needsRenegotiation) {
+      void maybeCreateOffer(peerId)
+    }
+  }
+}
+
+async function syncConnectionSender(connection, kind, track) {
+  const sender = connection.getSenders().find((item) => item.track?.kind === kind)
+  if (sender) {
+    try {
+      await sender.replaceTrack(track ?? null)
+    } catch (error) {
+      console.warn(`Failed to replace ${kind} track`, error)
+    }
+    return false
+  }
+
+  if (!track) {
+    return false
+  }
+
+  connection.addTrack(track, state.localStream)
+  return true
 }
 
 async function ensurePeerConnection(peerId, peerName = "") {
@@ -755,9 +939,7 @@ async function ensurePeerConnection(peerId, peerName = "") {
   peer.stream ??= new MediaStream()
   peer.videoEl.srcObject = peer.stream
 
-  for (const track of state.localStream?.getTracks() ?? []) {
-    connection.addTrack(track, state.localStream)
-  }
+  addLocalTracksToConnection(connection)
 
   connection.addEventListener("icecandidate", (event) => {
     if (event.candidate) {
@@ -818,13 +1000,12 @@ function createPeerState(peerId, peerName) {
 
   const placeholderEl = document.createElement("div")
   placeholderEl.className = "peer-placeholder"
-  placeholderEl.innerHTML = "<strong>연결 중</strong><span>상대 영상 준비 중</span>"
+  placeholderEl.innerHTML = "<strong>연결 중</strong><span>상대 화면 준비 중</span>"
 
-  const nameTagEl = document.createElement("span")
-  nameTagEl.className = "peer-name"
-  nameTagEl.textContent = sanitizeName(peerName)
+  const chatBubbleEl = document.createElement("div")
+  chatBubbleEl.className = "chat-bubble hidden"
 
-  tile.append(videoEl, placeholderEl, nameTagEl)
+  tile.append(videoEl, placeholderEl, chatBubbleEl)
   elements.remoteGrid.append(tile)
 
   return {
@@ -839,7 +1020,7 @@ function createPeerState(peerId, peerName) {
     tile,
     videoEl,
     placeholderEl,
-    nameTagEl
+    chatBubbleEl
   }
 }
 
@@ -1017,15 +1198,18 @@ function removePeer(peerId) {
     peer.tile.parentNode.removeChild(peer.tile)
   }
 
+  clearEphemeralChat(safePeerId)
+  clearDoodleLayer(safePeerId)
   state.peers.delete(safePeerId)
   renderRemoteStageState()
 }
 
 function renderRemoteStageState() {
   const hasPeers = state.peers.size > 0
-  elements.remoteGrid.dataset.count = String(state.peers.size)
+  syncParticipantGrid()
   elements.emptyStage.classList.toggle("hidden", hasPeers)
-  elements.remoteGrid.classList.toggle("hidden", !hasPeers)
+  elements.remoteGrid.classList.toggle("hidden", getVisibleGridTileCount() === 0)
+  renderLocalPreviewState()
   updateCallTitle()
 }
 
@@ -1035,23 +1219,74 @@ function updatePeerTile(peer) {
 
   peer.videoEl.classList.toggle("hidden", !showVideo)
   peer.placeholderEl.classList.toggle("hidden", showVideo)
-  peer.nameTagEl.textContent = peerDisplayName(peer)
-
   if (!showVideo) {
     if (peer.connectionState === "connected") {
-      peer.placeholderEl.innerHTML = `<strong>${peerDisplayName(peer)}</strong><span>카메라 꺼짐 또는 음성 전용</span>`
+      peer.placeholderEl.innerHTML = "<strong>영상 꺼짐</strong><span>카메라를 다시 켜면 화면이 보입니다.</span>"
     } else {
-      peer.placeholderEl.innerHTML = `<strong>${peerDisplayName(peer)}</strong><span>연결 중...</span>`
+      peer.placeholderEl.innerHTML = "<strong>연결 중</strong><span>상대 화면 준비 중</span>"
     }
   }
 }
 
-function peerDisplayName(peer) {
-  const clean = sanitizeName(peer.name)
-  if (!clean || clean === DEFAULT_DISPLAY_NAME) {
-    return "참여자"
+function shouldUseStageLocalTile() {
+  return state.peers.size + 1 >= 4
+}
+
+function getVisibleGridTileCount() {
+  return state.peers.size + (shouldUseStageLocalTile() ? 1 : 0)
+}
+
+function getGridColumns(tileCount) {
+  if (tileCount >= 5) {
+    return 3
   }
-  return clean
+
+  if (tileCount >= 2) {
+    return 2
+  }
+
+  return 1
+}
+
+function syncParticipantGrid() {
+  const peerTiles = Array.from(state.peers.values()).map((peer) => peer.tile)
+
+  if (!shouldUseStageLocalTile()) {
+    elements.remoteGrid.replaceChildren(...peerTiles)
+    elements.remoteGrid.dataset.count = String(peerTiles.length)
+    return
+  }
+
+  const columns = getGridColumns(peerTiles.length + 1)
+  const localIndex = Math.max(0, columns - 1)
+  const orderedTiles = [
+    ...peerTiles.slice(0, localIndex),
+    elements.localStageTile,
+    ...peerTiles.slice(localIndex)
+  ]
+
+  elements.remoteGrid.replaceChildren(...orderedTiles)
+  elements.remoteGrid.dataset.count = String(orderedTiles.length)
+}
+
+function renderLocalStageState() {
+  const showStageTile = shouldUseStageLocalTile()
+  elements.localStageTile.classList.toggle("hidden", !showStageTile)
+  elements.localStageTile.setAttribute("aria-hidden", String(!showStageTile))
+  elements.localVideo.srcObject = state.localStream
+  elements.localStageVideo.srcObject = state.localStream
+
+  if (!showStageTile) {
+    return
+  }
+
+  const { showVideo, placeholderMarkup } = getLocalPreviewPresentation()
+  elements.localStageVideo.classList.toggle("hidden", !showVideo)
+  elements.localStagePlaceholder.classList.toggle("hidden", showVideo)
+  if (!showVideo) {
+    elements.localStagePlaceholder.innerHTML = placeholderMarkup
+  }
+  elements.localStageVideo.classList.toggle("mirrored", state.isMirrored)
 }
 
 function readLocalMediaState() {
@@ -1066,47 +1301,67 @@ function readLocalMediaState() {
 }
 
 function renderLocalPreviewState() {
+  const { hasStream, showVideo, placeholderMarkup } = getLocalPreviewPresentation()
+
+  elements.localVideo.classList.toggle("hidden", !showVideo)
+  elements.localPlaceholder.classList.toggle("hidden", showVideo)
+  elements.localVideo.classList.toggle("mirrored", state.isMirrored)
+  elements.localStack.classList.toggle("stage-local-hidden", shouldUseStageLocalTile())
+
+  if (!showVideo) {
+    elements.localPlaceholder.innerHTML = placeholderMarkup
+  }
+
+  renderLocalStageState()
+}
+
+function updateCallTitle() {
+  document.title = state.room?.title
+    ? `${state.room.title} | 워키토키`
+    : "워키토키"
+}
+
+function getLocalPreviewPresentation() {
   const hasStream = Boolean(state.localStream)
   const media = hasStream ? readLocalMediaState() : state.selfMedia
   const showVideo = hasStream && media.hasVideo && media.videoEnabled
 
-  elements.localVideo.classList.toggle("hidden", !showVideo)
-  elements.localPlaceholder.classList.toggle("hidden", showVideo)
-
   if (!hasStream) {
-    elements.localPlaceholder.innerHTML =
-      "<strong>내 화면 미리보기</strong><span>통화를 시작하면 여기에 표시됩니다.</span>"
-    return
+    return {
+      hasStream,
+      showVideo,
+      placeholderMarkup:
+        "<strong>내 화면 미리보기</strong><span>통화를 시작하면 여기에 표시됩니다.</span>"
+    }
   }
 
   if (showVideo) {
-    return
+    return {
+      hasStream,
+      showVideo,
+      placeholderMarkup: ""
+    }
   }
 
   if (media.hasVideo) {
-    elements.localPlaceholder.innerHTML = "<strong>카메라 꺼짐</strong><span>버튼으로 다시 켤 수 있습니다.</span>"
-  } else {
-    elements.localPlaceholder.innerHTML = "<strong>음성 전용</strong><span>카메라 권한이 없거나 꺼져 있습니다.</span>"
-  }
-}
-
-function updateCallTitle() {
-  if (!state.room) {
-    elements.callTitle.textContent = "방 연결 준비 중"
-    return
+    return {
+      hasStream,
+      showVideo,
+      placeholderMarkup:
+        "<strong>카메라 꺼짐</strong><span>버튼으로 다시 켤 수 있습니다.</span>"
+    }
   }
 
-  const title = state.room.roomTitle?.trim()
-  if (title) {
-    elements.callTitle.textContent = title
-    return
+  return {
+    hasStream,
+    showVideo,
+    placeholderMarkup:
+      "<strong>음성 전용</strong><span>카메라 권한이 없거나 꺼져 있습니다.</span>"
   }
-
-  elements.callTitle.textContent = `방 키 ${state.room.code}`
 }
 
 function toggleMicrophone() {
-  const track = state.localStream?.getAudioTracks()[0]
+  const track = state.microphoneTrack
   if (!track) {
     return
   }
@@ -1117,7 +1372,7 @@ function toggleMicrophone() {
 }
 
 function toggleCamera() {
-  const track = state.localStream?.getVideoTracks()[0]
+  const track = getActiveVideoTrack()
   if (!track) {
     return
   }
@@ -1127,13 +1382,83 @@ function toggleCamera() {
   updateControls()
 }
 
+function toggleMirror() {
+  state.isMirrored = !state.isMirrored
+  renderLocalPreviewState()
+  updateControls()
+}
+
+async function switchCameraFacing() {
+  if (!state.cameraTrack || !navigator.mediaDevices?.getUserMedia) {
+    setStatus("카메라가 없어서 화면 전환을 할 수 없습니다.")
+    return
+  }
+
+  const currentTrack = state.cameraTrack
+  const previousEnabled = currentTrack.enabled
+  const nextMode = state.preferredFacingMode === "environment" ? "user" : "environment"
+
+  try {
+    const nextTrack = await acquireReplacementCameraTrack(nextMode)
+    if (!nextTrack) {
+      setStatus("다른 카메라를 찾지 못했습니다.")
+      return
+    }
+
+    nextTrack.enabled = previousEnabled
+    state.cameraTrack = nextTrack
+    state.currentVideoDeviceId = nextTrack.getSettings?.().deviceId ?? state.currentVideoDeviceId
+    state.preferredFacingMode = nextTrack.getSettings?.().facingMode ?? nextMode
+    applyActiveLocalStream()
+    await syncPeerSenders()
+    sendPresence()
+    currentTrack.stop()
+    setStatus(state.preferredFacingMode === "environment" ? "후면 카메라로 전환했습니다." : "전면 카메라로 전환했습니다.")
+  } catch {
+    setStatus("카메라 전환을 할 수 없습니다.")
+  }
+}
+
+async function acquireReplacementCameraTrack(nextMode) {
+  const videoInputs = await navigator.mediaDevices.enumerateDevices().catch(() => [])
+  const cameras = videoInputs.filter((device) => device.kind === "videoinput")
+  const currentDeviceId = state.currentVideoDeviceId || state.cameraTrack?.getSettings?.().deviceId || ""
+
+  const currentIndex = cameras.findIndex((device) => device.deviceId === currentDeviceId)
+  const nextDevice =
+    cameras.length > 1 && currentIndex >= 0
+      ? cameras[(currentIndex + 1) % cameras.length]
+      : null
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      ...(nextDevice
+        ? {
+            deviceId: {
+              exact: nextDevice.deviceId
+            }
+          }
+        : {
+            facingMode: {
+              ideal: nextMode
+            }
+          })
+    }
+  })
+
+  return stream.getVideoTracks()[0] ?? null
+}
+
 async function leaveCall() {
   state.isLeaving = true
   clearSignalingReconnectTimer()
   stopSocketHeartbeat()
   hideConnectionHelpModal()
   hideWaitingModal({ manual: false })
-  await resetToLobby("통화를 종료했습니다. 여기서 다시 시작할 수 있습니다.")
+  await resetToLobby("통화를 종료했습니다. 대기실에서 다시 시작할 수 있습니다.")
 }
 
 async function resetToLobby(message, options = {}) {
@@ -1162,20 +1487,27 @@ async function hardReset({ returnToSetup = true, preserveRoom = false } = {}) {
       // Ignore close errors.
     }
   }
+
   state.socket = null
   state.isJoining = false
   state.isLeaving = false
   state.reconnectAttempts = 0
   state.lastPongAt = 0
   state.waitingModalDismissed = false
+  state.isDrawingDoodle = false
+  state.lastDoodlePoint = null
+  state.isDoodleMode = false
 
   for (const peerId of Array.from(state.peers.keys())) {
     removePeer(peerId)
   }
 
-  stopTracks(state.localStream)
-  state.localStream = null
+  clearAllEphemeralChats()
+  clearAllDoodles()
+  hideChatModal()
+  stopLocalCaptureTracks()
   elements.localVideo.srcObject = null
+  elements.localStageVideo.srcObject = null
   await releaseWakeLock()
   state.selfMedia = {
     audioEnabled: true,
@@ -1185,11 +1517,11 @@ async function hardReset({ returnToSetup = true, preserveRoom = false } = {}) {
 
   if (!preserveRoom) {
     state.room = null
-    elements.joinRoomCodeInput.value = ""
-    elements.joinPinInput.value = ""
     clearRoomQueryFromUrl()
   }
 
+  hidePrivateJoinModal()
+  updateDoodleModeUI()
   updateRoomMetaUI()
   hideConnectionHelpModal()
   hideWaitingModal({ manual: false })
@@ -1206,35 +1538,54 @@ async function hardReset({ returnToSetup = true, preserveRoom = false } = {}) {
 }
 
 function updateControls(isBusy = false) {
-  const localAudioTrack = state.localStream?.getAudioTracks()[0] ?? null
-  const localVideoTrack = state.localStream?.getVideoTracks()[0] ?? null
+  const localAudioTrack = state.microphoneTrack
+  const localVideoTrack = getActiveVideoTrack()
   const hasCallSession = Boolean(state.socket || state.localStream)
+  const hasSocket = state.socket?.readyState === WebSocket.OPEN
   const audioEnabled = Boolean(localAudioTrack?.enabled)
   const videoEnabled = Boolean(localVideoTrack?.enabled)
   const onCallView = document.body.dataset.view === "call"
+  const supportsScreenShare = Boolean(navigator.mediaDevices?.getDisplayMedia)
 
   elements.inviteBtn.disabled = !onCallView || !state.room
+  elements.chatBtn.disabled = !onCallView || !hasSocket
+  elements.doodleBtn.disabled = !onCallView || !hasSocket
   elements.leaveBtn.disabled = !hasCallSession || isBusy
   elements.toggleMicBtn.disabled = !localAudioTrack
   elements.toggleCameraBtn.disabled = !localVideoTrack
+  elements.mirrorBtn.disabled = !localVideoTrack
+  elements.shareScreenBtn.disabled = !onCallView || !hasSocket || !supportsScreenShare
 
   elements.toggleMicBtn.dataset.active = String(audioEnabled)
   elements.toggleCameraBtn.dataset.active = String(videoEnabled)
+  elements.mirrorBtn.dataset.active = String(state.isMirrored)
+  elements.shareScreenBtn.dataset.active = String(state.isScreenSharing)
+  elements.chatBtn.dataset.active = "true"
+  elements.doodleBtn.dataset.active = String(state.isDoodleMode)
   elements.inviteBtn.dataset.active = "true"
   elements.leaveBtn.dataset.active = "true"
 
   elements.toggleMicText.textContent = audioEnabled ? "마이크" : "음소거"
-  elements.toggleCameraText.textContent = videoEnabled ? "카메라" : "영상 끔"
+  elements.toggleCameraText.textContent = state.isScreenSharing
+    ? videoEnabled
+      ? "화면"
+      : "화면 끔"
+    : videoEnabled
+      ? "카메라"
+      : "영상 끔"
+  elements.shareScreenText.textContent = state.isScreenSharing ? "공유 중" : "화면 공유"
   elements.toggleMicOff.classList.toggle("hidden", audioEnabled)
   elements.toggleCameraOff.classList.toggle("hidden", videoEnabled)
 }
 
 function setSetupBusy(busy) {
-  elements.directJoinSwitchBtn.disabled = busy
-  elements.createModeBtn.disabled = busy
-  elements.joinModeBtn.disabled = busy
+  elements.openLobbyBtn.disabled = busy
+  elements.refreshLobbyBtn.disabled = busy
+  elements.isPrivateCheck.disabled = busy
+  elements.capacitySelect.disabled = busy
+  elements.createPinInput.disabled = busy
   elements.createRoomBtn.disabled = busy
-  elements.joinRoomBtn.disabled = busy
+  elements.privateJoinSubmitBtn.disabled = busy
 }
 
 function setStatus(message) {
@@ -1247,15 +1598,25 @@ function setView(view) {
   elements.setupView.classList.toggle("hidden", view !== "setup")
   elements.callView.classList.toggle("hidden", view !== "call")
   elements.callView.setAttribute("aria-hidden", String(view !== "call"))
+  if (view !== "call") {
+    state.isDoodleMode = false
+    hideChatModal()
+    updateDoodleModeUI()
+  } else {
+    resizeDoodleCanvas()
+  }
   updateControls()
   syncWaitingModal()
 }
 
 function updateRoomMetaUI() {
-  elements.roomCodeDisplay.textContent = state.room?.code ?? "----"
-  elements.roomPinWrap.classList.toggle("hidden", !state.room?.isPrivate)
-  elements.roomPinDisplay.textContent = state.room?.isPrivate ? state.room.pin || "----" : "----"
-  elements.roomCapacityDisplay.textContent = `최대 인원 ${state.room?.capacity ?? 4}명`
+  const roomLabel =
+    state.room?.isPrivate && state.room?.pin
+      ? `${state.room.title} - ${state.room.pin}`
+      : state.room?.title ?? "----"
+
+  elements.roomNameDisplay.textContent = roomLabel
+  elements.roomCapacityDisplay.textContent = "같은 번호로 들어오면 바로 연결됩니다."
   updateCallTitle()
 }
 
@@ -1276,6 +1637,7 @@ function hideWaitingModal({ manual = false } = {}) {
   if (manual) {
     state.waitingModalDismissed = true
   }
+
   elements.waitingModal.classList.add("hidden")
 }
 
@@ -1298,13 +1660,13 @@ async function shareRoomInvite() {
   }
 
   const shareUrl = buildRoomShareUrl(state.room)
-  const inviteText = [
-    "워키토키 방 초대",
-    `방 키: ${state.room.code}`,
-    `최대 인원: ${state.room.capacity}명`,
-    state.room.isPrivate ? `비밀번호: ${state.room.pin}` : "비밀번호: 없음(공개방)",
-    `바로 입장: ${shareUrl}`
-  ].join("\n")
+  const inviteRoomLabel =
+    state.room.isPrivate && state.room.pin
+      ? `${state.room.title} - ${state.room.pin}`
+      : state.room.title
+  const inviteLines = ["워키토키 방 초대", `방: ${inviteRoomLabel}`, `바로 입장: ${shareUrl}`]
+
+  const inviteText = inviteLines.join("\n")
 
   if (typeof navigator.share === "function") {
     try {
@@ -1324,6 +1686,358 @@ async function shareRoomInvite() {
 
   await copyText(inviteText)
   setStatus("공유 시트를 열 수 없어 초대 정보를 복사했습니다.")
+}
+
+function openChatModal() {
+  if (!state.room || document.body.dataset.view !== "call") {
+    return
+  }
+
+  elements.chatInput.value = ""
+  elements.chatModal.classList.remove("hidden")
+  window.setTimeout(() => {
+    elements.chatInput.focus()
+  }, 0)
+}
+
+function closeChatModal() {
+  hideChatModal()
+}
+
+function hideChatModal() {
+  elements.chatInput.value = ""
+  elements.chatModal.classList.add("hidden")
+}
+
+async function handleChatSubmit(event) {
+  event.preventDefault()
+  const text = sanitizeChatText(elements.chatInput.value)
+  if (!text) {
+    return
+  }
+
+  showEphemeralChat(state.clientId, text)
+  sendSocketMessage({
+    type: "chat",
+    text
+  })
+  hideChatModal()
+}
+
+function showEphemeralChat(clientId, text) {
+  const safeClientId = sanitizeClientId(clientId)
+  const bubble = getChatBubbleElement(safeClientId)
+  if (!bubble) {
+    return
+  }
+
+  bubble.textContent = text
+  bubble.classList.remove("hidden")
+
+  const existingTimer = state.chatTimers.get(safeClientId)
+  if (existingTimer) {
+    window.clearTimeout(existingTimer)
+  }
+
+  const timerId = window.setTimeout(() => {
+    clearEphemeralChat(safeClientId)
+  }, 3000)
+  state.chatTimers.set(safeClientId, timerId)
+}
+
+function getChatBubbleElement(clientId) {
+  if (clientId === state.clientId) {
+    return shouldUseStageLocalTile() ? elements.localStageChatBubble : elements.localChatBubble
+  }
+
+  return state.peers.get(clientId)?.chatBubbleEl ?? null
+}
+
+function clearEphemeralChat(clientId) {
+  const safeClientId = sanitizeClientId(clientId)
+  const timerId = state.chatTimers.get(safeClientId)
+  if (timerId) {
+    window.clearTimeout(timerId)
+  }
+  state.chatTimers.delete(safeClientId)
+
+  if (safeClientId === state.clientId) {
+    elements.localChatBubble.classList.add("hidden")
+    elements.localStageChatBubble.classList.add("hidden")
+    return
+  }
+
+  state.peers.get(safeClientId)?.chatBubbleEl.classList.add("hidden")
+}
+
+function clearAllEphemeralChats() {
+  for (const timerId of state.chatTimers.values()) {
+    window.clearTimeout(timerId)
+  }
+  state.chatTimers.clear()
+  elements.localChatBubble.classList.add("hidden")
+  elements.localStageChatBubble.classList.add("hidden")
+  for (const peer of state.peers.values()) {
+    peer.chatBubbleEl.classList.add("hidden")
+  }
+}
+
+function toggleDoodleMode() {
+  if (!state.room || document.body.dataset.view !== "call") {
+    return
+  }
+
+  state.isDoodleMode = !state.isDoodleMode
+  updateDoodleModeUI()
+}
+
+function updateDoodleModeUI() {
+  elements.doodleCanvas.classList.toggle("doodle-active", state.isDoodleMode)
+  elements.doodleNotice.classList.toggle("hidden", !state.isDoodleMode)
+  elements.doodleBtn.dataset.active = String(state.isDoodleMode)
+  syncDoodleCanvasVisibility()
+}
+
+function initializeDoodleCanvas() {
+  const context = elements.doodleCanvas.getContext("2d")
+  state.doodleContext = context
+  elements.doodleCanvas.addEventListener("pointerdown", handleDoodlePointerDown)
+  elements.doodleCanvas.addEventListener("pointermove", handleDoodlePointerMove)
+  elements.doodleCanvas.addEventListener("pointerup", handleDoodlePointerUp)
+  elements.doodleCanvas.addEventListener("pointercancel", handleDoodlePointerUp)
+  resizeDoodleCanvas()
+  updateDoodleModeUI()
+}
+
+function handleDoodlePointerDown(event) {
+  if (!state.isDoodleMode || document.body.dataset.view !== "call") {
+    return
+  }
+
+  state.isDrawingDoodle = true
+  state.lastDoodlePoint = getCanvasPoint(event)
+  elements.doodleCanvas.setPointerCapture(event.pointerId)
+}
+
+function handleDoodlePointerMove(event) {
+  if (!state.isDrawingDoodle || !state.lastDoodlePoint) {
+    return
+  }
+
+  const nextPoint = getCanvasPoint(event)
+  const segment = normalizeDoodleSegment({
+    from: state.lastDoodlePoint,
+    to: nextPoint
+  })
+  if (!segment) {
+    return
+  }
+
+  appendDoodleSegment(state.clientId, segment, { broadcast: true })
+  sendSocketMessage({
+    type: "doodle",
+    segment
+  })
+  state.lastDoodlePoint = nextPoint
+}
+
+function handleDoodlePointerUp(event) {
+  if (state.isDrawingDoodle) {
+    state.isDrawingDoodle = false
+    state.lastDoodlePoint = null
+  }
+
+  if (elements.doodleCanvas.hasPointerCapture?.(event.pointerId)) {
+    elements.doodleCanvas.releasePointerCapture(event.pointerId)
+  }
+}
+
+function getCanvasPoint(event) {
+  const rect = elements.doodleCanvas.getBoundingClientRect()
+  return {
+    x: Math.min(Math.max((event.clientX - rect.left) / Math.max(rect.width, 1), 0), 1),
+    y: Math.min(Math.max((event.clientY - rect.top) / Math.max(rect.height, 1), 0), 1)
+  }
+}
+
+function normalizeDoodleSegment(segment) {
+  const from = normalizeDoodlePoint(segment?.from)
+  const to = normalizeDoodlePoint(segment?.to)
+  if (!from || !to) {
+    return null
+  }
+
+  if (Math.abs(from.x - to.x) + Math.abs(from.y - to.y) < 0.0025) {
+    return null
+  }
+
+  return { from, to }
+}
+
+function normalizeDoodlePoint(point) {
+  const x = Number(point?.x)
+  const y = Number(point?.y)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null
+  }
+
+  return {
+    x: Math.min(Math.max(x, 0), 1),
+    y: Math.min(Math.max(y, 0), 1)
+  }
+}
+
+function appendDoodleSegment(clientId, segment, options = {}) {
+  const safeClientId = sanitizeClientId(clientId)
+  const normalizedSegment = normalizeDoodleSegment(segment)
+  if (!safeClientId || !normalizedSegment) {
+    return
+  }
+
+  const layer = getDoodleLayer(safeClientId)
+  layer.segments.push(normalizedSegment)
+  if (layer.segments.length > 240) {
+    layer.segments.shift()
+  }
+
+  drawDoodleSegment(normalizedSegment, layer.color)
+  scheduleDoodleClear(safeClientId, options.broadcast === true)
+  syncDoodleCanvasVisibility()
+}
+
+function applyRemoteDoodle(clientId, segment) {
+  appendDoodleSegment(clientId, segment, { broadcast: false })
+}
+
+function getDoodleLayer(clientId) {
+  let layer = state.doodleLayers.get(clientId)
+  if (!layer) {
+    layer = {
+      color: getParticipantColor(clientId),
+      segments: [],
+      timerId: null
+    }
+    state.doodleLayers.set(clientId, layer)
+  }
+
+  return layer
+}
+
+function scheduleDoodleClear(clientId, broadcast) {
+  const layer = getDoodleLayer(clientId)
+  if (layer.timerId) {
+    window.clearTimeout(layer.timerId)
+  }
+
+  layer.timerId = window.setTimeout(() => {
+    clearDoodleLayer(clientId)
+    if (broadcast) {
+      sendSocketMessage({
+        type: "doodle-clear"
+      })
+    }
+  }, 3000)
+}
+
+function clearDoodleLayer(clientId) {
+  const safeClientId = sanitizeClientId(clientId)
+  const layer = state.doodleLayers.get(safeClientId)
+  if (!layer) {
+    return
+  }
+
+  if (layer.timerId) {
+    window.clearTimeout(layer.timerId)
+  }
+
+  state.doodleLayers.delete(safeClientId)
+  redrawAllDoodles()
+  syncDoodleCanvasVisibility()
+}
+
+function clearAllDoodles() {
+  for (const layer of state.doodleLayers.values()) {
+    if (layer.timerId) {
+      window.clearTimeout(layer.timerId)
+    }
+  }
+
+  state.doodleLayers.clear()
+  if (state.doodleContext) {
+    const rect = elements.doodleCanvas.getBoundingClientRect()
+    state.doodleContext.clearRect(0, 0, rect.width, rect.height)
+  }
+  syncDoodleCanvasVisibility()
+}
+
+function redrawAllDoodles() {
+  if (!state.doodleContext) {
+    return
+  }
+
+  const rect = elements.doodleCanvas.getBoundingClientRect()
+  state.doodleContext.clearRect(0, 0, rect.width, rect.height)
+
+  for (const layer of state.doodleLayers.values()) {
+    for (const segment of layer.segments) {
+      drawDoodleSegment(segment, layer.color)
+    }
+  }
+}
+
+function drawDoodleSegment(segment, color) {
+  if (!state.doodleContext) {
+    return
+  }
+
+  const rect = elements.doodleCanvas.getBoundingClientRect()
+  const fromX = segment.from.x * rect.width
+  const fromY = segment.from.y * rect.height
+  const toX = segment.to.x * rect.width
+  const toY = segment.to.y * rect.height
+
+  state.doodleContext.strokeStyle = color
+  state.doodleContext.lineWidth = 4.5
+  state.doodleContext.lineCap = "round"
+  state.doodleContext.lineJoin = "round"
+  state.doodleContext.beginPath()
+  state.doodleContext.moveTo(fromX, fromY)
+  state.doodleContext.lineTo(toX, toY)
+  state.doodleContext.stroke()
+}
+
+function resizeDoodleCanvas() {
+  if (!state.doodleContext) {
+    return
+  }
+
+  const rect = elements.callStage.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) {
+    return
+  }
+
+  const ratio = window.devicePixelRatio || 1
+  elements.doodleCanvas.width = Math.round(rect.width * ratio)
+  elements.doodleCanvas.height = Math.round(rect.height * ratio)
+  elements.doodleCanvas.style.width = `${rect.width}px`
+  elements.doodleCanvas.style.height = `${rect.height}px`
+  state.doodleContext.setTransform(ratio, 0, 0, ratio, 0, 0)
+  redrawAllDoodles()
+}
+
+function getParticipantColor(clientId) {
+  const palette = ["#ff8e72", "#7ce4ff", "#ffd56f", "#c2ff7b", "#ffa7d1", "#b1a0ff"]
+  let hash = 0
+  for (const char of clientId) {
+    hash = (hash + char.charCodeAt(0)) % palette.length
+  }
+  return palette[hash]
+}
+
+function syncDoodleCanvasVisibility() {
+  const shouldShow =
+    document.body.dataset.view === "call" && (state.isDoodleMode || state.doodleLayers.size > 0)
+  elements.doodleCanvas.classList.toggle("hidden", !shouldShow)
 }
 
 async function copyText(text) {
@@ -1424,8 +2138,9 @@ function scheduleSignalingReconnect() {
     }
 
     try {
-      await openSignalingSocket(state.displayName)
+      await openSignalingSocket()
       setStatus("방 연결을 다시 열었습니다.")
+
       for (const peerId of state.peers.keys()) {
         if (shouldInitiateOffer(peerId)) {
           void maybeCreateOffer(peerId, { iceRestart: true })
@@ -1531,6 +2246,7 @@ async function getIceServers() {
         if (!Array.isArray(payload.iceServers) || payload.iceServers.length === 0) {
           return DEFAULT_ICE_SERVERS
         }
+
         return payload.iceServers
       })
       .catch(() => DEFAULT_ICE_SERVERS)
@@ -1541,22 +2257,22 @@ async function getIceServers() {
 
 function parseSharedRoomFromUrl() {
   const params = new URLSearchParams(location.search)
-  const code = onlyDigits(params.get("room")).slice(0, 4)
+  const roomId = sanitizeRoomId(params.get("room"))
   const pin = onlyDigits(params.get("pin")).slice(0, 4)
 
-  if (!ROOM_CODE_REGEX.test(code)) {
+  if (!ROOM_ID_REGEX.test(roomId)) {
     return null
   }
 
   return {
-    code,
+    roomId,
     pin: PIN_REGEX.test(pin) ? pin : ""
   }
 }
 
 function buildRoomShareUrl(room) {
   const url = new URL(location.origin + location.pathname)
-  url.searchParams.set("room", room.code)
+  url.searchParams.set("room", room.id)
   if (room.isPrivate && room.pin) {
     url.searchParams.set("pin", room.pin)
   }
@@ -1590,6 +2306,7 @@ function sanitizeName(value) {
   if (!trimmed) {
     return DEFAULT_DISPLAY_NAME
   }
+
   return trimmed.replace(/\s+/g, " ").slice(0, 24)
 }
 
@@ -1597,21 +2314,28 @@ function sanitizeClientId(value) {
   return `${value ?? ""}`.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64)
 }
 
-function readAndPersistDisplayName() {
-  state.displayName = sanitizeName(elements.displayNameInput.value)
-  elements.displayNameInput.value = state.displayName
-  localStorage.setItem(`${STORAGE_PREFIX}.displayName`, state.displayName)
-  return state.displayName
+function sanitizeRoomId(value) {
+  return `${value ?? ""}`.trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 32)
 }
 
 function onlyDigits(value) {
   return `${value ?? ""}`.replace(/\D/g, "")
 }
 
+function sanitizeChatText(value) {
+  const trimmed = `${value ?? ""}`.trim()
+  if (!trimmed) {
+    return ""
+  }
+
+  return trimmed.replace(/\s+/g, " ").slice(0, 60)
+}
+
 function readErrorMessage(error, fallback) {
   if (error instanceof Error && error.message) {
     return error.message
   }
+
   return fallback
 }
 

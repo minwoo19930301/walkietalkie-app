@@ -20,8 +20,8 @@
                 <p class="eyebrow">WalkieTalkie make by a Computer Illiterate</p>
                 <h1>컴맹이 만든<br />워키토키</h1>
                 <p class="hero-copy">
-                  개인 링크 전달만으로 브라우저끼리 바로 통화합니다. 설치도 회원가입도
-                  없습니다.
+                  링크 복사 없이 대기실에서 바로 초대하고, 방 키로 빠르게 입장합니다. 최대
+                  8명까지 같은 방에서 통화할 수 있습니다.
                 </p>
               </div>
 
@@ -33,18 +33,84 @@
               </div>
             </div>
 
-            <div class="intro-footer">
-              <div class="mini-pills">
-                <span class="mini-pill">랜덤 링크 생성</span>
-                <span class="mini-pill">브라우저 통화</span>
+            <div class="lobby-panel">
+              <label class="field-label" for="displayNameInput">내 이름</label>
+              <input id="displayNameInput" class="field-input" type="text" maxlength="24" />
+
+              <div class="mode-switch" role="tablist" aria-label="방 모드">
+                <button id="createModeBtn" class="mode-btn active" type="button">방 만들기</button>
+                <button id="joinModeBtn" class="mode-btn" type="button">방 입장</button>
               </div>
 
-              <div class="intro-note" aria-hidden="true">
-                <span class="intro-note-dot"></span>
-                <span>타이틀을 먼저 보여주고 개인 링크를 준비합니다.</span>
-              </div>
+              <form id="createForm" class="room-form">
+                <label class="field-label" for="roomTitleInput">방 제목</label>
+                <input
+                  id="roomTitleInput"
+                  class="field-input"
+                  type="text"
+                  maxlength="32"
+                  placeholder="예: 우리 가족 통화방"
+                />
+
+                <div class="inline-fields">
+                  <div>
+                    <label class="field-label" for="capacitySelect">최대 인원</label>
+                    <select id="capacitySelect" class="field-input">
+                      <option value="4">4명</option>
+                      <option value="6">6명</option>
+                      <option value="8">8명</option>
+                    </select>
+                  </div>
+                  <label class="check-field">
+                    <input id="isPrivateCheck" type="checkbox" />
+                    비공개방(비밀번호)
+                  </label>
+                </div>
+
+                <div id="createPinWrap" class="hidden">
+                  <label class="field-label" for="createPinInput">비밀번호 4자리(숫자)</label>
+                  <input
+                    id="createPinInput"
+                    class="field-input"
+                    type="password"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    maxlength="4"
+                    placeholder="예: 1234"
+                  />
+                </div>
+
+                <button id="createRoomBtn" class="primary-btn" type="submit">방 만들고 바로 통화 화면으로</button>
+              </form>
+
+              <form id="joinForm" class="room-form hidden">
+                <label class="field-label" for="joinRoomCodeInput">방 키(4자리 숫자)</label>
+                <input
+                  id="joinRoomCodeInput"
+                  class="field-input"
+                  type="text"
+                  inputmode="numeric"
+                  pattern="[0-9]*"
+                  maxlength="4"
+                  placeholder="예: 4821"
+                />
+
+                <label class="field-label" for="joinPinInput">비밀번호(비공개방일 때만)</label>
+                <input
+                  id="joinPinInput"
+                  class="field-input"
+                  type="password"
+                  inputmode="numeric"
+                  pattern="[0-9]*"
+                  maxlength="4"
+                  placeholder="예: 1234"
+                />
+
+                <button id="joinRoomBtn" class="primary-btn" type="submit">방 키로 입장</button>
+              </form>
+
               <p class="setup-status" id="setupStatusText">
-                처음 들어오면 2초 뒤 링크를 만들고, 3초 뒤 통화 화면으로 전환됩니다.
+                방을 만들거나 방 키로 입장하면 바로 통화 화면으로 넘어갑니다.
               </p>
             </div>
           </article>
@@ -53,35 +119,27 @@
 
       <section class="view call-view hidden" id="callView" aria-hidden="true">
         <div class="call-stage">
-          <video id="remoteVideo" class="call-video hidden" playsinline autoplay></video>
-          <div class="stage-placeholder" id="remotePlaceholder">
-            <strong>상대방을 기다리는 중</strong>
-            <span>같은 링크로 들어오면 바로 영상·음성 연결을 시작합니다.</span>
-          </div>
-
-          <div class="call-topbar">
-            <span class="call-chip brand-chip">워키토키</span>
-            <span class="call-chip" id="peerBadge">대기 중</span>
+          <div id="remoteGrid" class="remote-grid"></div>
+          <div class="stage-placeholder" id="emptyStage">
+            <strong>대기실에서 다른 사람을 기다리는 중</strong>
+            <span>같은 방 코드로 입장하면 자동으로 연결됩니다.</span>
           </div>
 
           <div class="call-copy">
-            <strong id="callTitle">상대방을 기다리는 중</strong>
-            <p class="status-line" id="statusText">
-              같은 링크를 저장한 뒤 두 사람이 동시에 들어오면 자동으로 연결됩니다.
-            </p>
+            <strong id="callTitle">방 연결 준비 중</strong>
+            <p class="status-line" id="statusText"></p>
           </div>
 
           <aside class="local-pip">
             <video id="localVideo" class="call-video hidden" playsinline autoplay muted></video>
             <div class="pip-placeholder" id="localPlaceholder">
               <strong>카메라 준비 전</strong>
-              <span>권한을 허용하면 여기에서 내 화면을 볼 수 있습니다.</span>
+              <span>권한을 허용하면 내 화면이 여기에 표시됩니다.</span>
             </div>
-            <span class="pip-badge" id="localBadge">나</span>
           </aside>
 
           <div class="control-dock">
-            <button id="inviteBtn" class="icon-button" type="button" aria-label="초대 링크">
+            <button id="inviteBtn" class="icon-button" type="button" aria-label="방 코드 보기">
               <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 15V5" />
                 <path d="m8 9 4-4 4 4" />
@@ -91,9 +149,7 @@
             </button>
             <button id="toggleMicBtn" class="icon-button" type="button" disabled aria-label="마이크">
               <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z"
-                />
+                <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" />
                 <path d="M6 11.5a6 6 0 0 0 12 0" />
                 <path d="M12 17.5v3" />
                 <path d="M8.5 20.5h7" />
@@ -109,47 +165,41 @@
               </svg>
               <span class="icon-text" id="toggleCameraText">카메라</span>
             </button>
-            <button
-              id="leaveBtn"
-              class="icon-button end-button"
-              type="button"
-              disabled
-              aria-label="통화 종료"
-            >
+            <button id="leaveBtn" class="icon-button end-button" type="button" disabled aria-label="통화 종료">
               <svg class="control-icon hangup-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M5.1 9.7c4.4-2.8 9.4-2.8 13.8 0 .8.5 1.1 1.6.8 2.5l-.9 2.2c-.3.8-1.2 1.3-2 1l-3.1-1.1c-.8-.3-1.2-1.2-.9-2l.2-.5c-.8-.1-1.4-.2-2.1-.2s-1.3.1-2.1.2l.2.5c.3.8-.1 1.7-.9 2l-3.1 1.1c-.8.3-1.7-.2-2-1l-.9-2.2c-.3-.9 0-2 .8-2.5Z"
-                />
+                <path d="M6.5 13.6c3.5-2.6 7.5-2.6 11 0" />
               </svg>
               <span class="icon-text">종료</span>
             </button>
           </div>
 
-          <div class="waiting-modal-backdrop hidden" id="waitingModal">
-            <div class="waiting-modal" role="dialog" aria-modal="true" aria-labelledby="waitingTitle">
-              <div class="modal-head">
+              <div class="waiting-modal-backdrop hidden" id="waitingModal">
+                <div class="waiting-modal" role="dialog" aria-modal="true" aria-labelledby="waitingTitle">
+                  <div class="modal-head">
                 <div>
-                  <p class="modal-kicker">상대 대기 중</p>
-                  <h2 id="waitingTitle">링크를 전달해 들어오게 하세요</h2>
+                  <p class="modal-kicker">대기실</p>
+                  <h2 id="waitingTitle">방 코드로 사람을 초대하세요</h2>
                 </div>
                 <button
                   id="closeWaitingModalBtn"
                   class="modal-close"
                   type="button"
-                  aria-label="초대 모달 닫기"
+                  aria-label="대기실 닫기"
                 >
                   <span aria-hidden="true">×</span>
                 </button>
               </div>
-              <p class="modal-copy">
-                이 링크를 보내면 같은 워키토키 방으로 바로 들어올 수 있습니다.
-              </p>
-              <div id="inviteLink" class="invite-output modal-link"></div>
-              <div class="modal-actions">
-                <button id="shareInviteBtn" class="primary-btn">링크 전달</button>
-                <button id="copyInviteBtn" class="secondary-btn">링크 복사</button>
+              <p class="modal-copy">상대방이 아래 방 키를 입력하면 바로 같은 방으로 들어옵니다.</p>
+              <div class="room-code-box">
+                <span class="room-code-label">방 키</span>
+                <strong id="roomCodeDisplay">----</strong>
               </div>
-              <button id="regenerateLinkBtn" class="text-btn" type="button">새 링크 만들기</button>
+              <div id="roomPinWrap" class="room-pin-box hidden">
+                <span>비밀번호</span>
+                <strong id="roomPinDisplay">----</strong>
+              </div>
+              <p class="room-meta-line" id="roomCapacityDisplay">최대 인원 4명</p>
+              <button id="shareRoomBtn" class="primary-btn modal-share-btn" type="button">초대 전달</button>
             </div>
           </div>
 
@@ -176,13 +226,13 @@
               </div>
               <p class="modal-copy">
                 네트워크 상태에 따라 바로 연결되지 않을 수 있습니다. 아래 순서대로 다시
-                확인해 보세요.
+                확인해보세요.
               </p>
               <ol class="help-list">
-                <li>둘 다 같은 링크인지 먼저 확인</li>
-                <li>iPhone/Mac의 IP 주소 추적 제한, Private Relay, VPN, 필터링 앱 끄기</li>
-                <li>모바일 데이터 말고 일반 Wi-Fi로 다시 시도</li>
-                <li>앱을 닫고 같은 링크를 다시 열어서 한 번 더 시도</li>
+                <li>같은 방 키와 비밀번호를 입력했는지 먼저 확인</li>
+                <li>와이파이/모바일 데이터를 바꿔서 다시 시도</li>
+                <li>VPN, 광고 차단, 사설 네트워크 기능을 잠시 꺼보고 재시도</li>
+                <li>앱을 닫았다가 같은 방 키로 다시 입장</li>
               </ol>
               <div class="modal-actions">
                 <button id="retryConnectionBtn" class="primary-btn" type="button">다시 시도</button>

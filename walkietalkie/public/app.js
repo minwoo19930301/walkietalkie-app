@@ -1,17 +1,47 @@
 const STORAGE_PREFIX = "walkietalkie"
 const DEFAULT_DISPLAY_NAME = "참여자"
+const ROOM_CODE_REGEX = /^\d{4}$/
+const PIN_REGEX = /^\d{4}$/
+const ALLOWED_CAPACITIES = new Set([4, 6, 8])
+
+const DEFAULT_ICE_SERVERS = [
+  {
+    urls: "stun:stun.cloudflare.com:3478"
+  }
+]
+
+const SOCKET_PING_INTERVAL_MS = 12000
+const SOCKET_PONG_TIMEOUT_MS = 30000
+const SIGNALING_RECONNECT_BASE_DELAY_MS = 1200
+const MAX_SIGNALING_RECONNECT_ATTEMPTS = 4
+
+const clientId =
+  sessionStorage.getItem(`${STORAGE_PREFIX}.clientId`) ?? `wt-${crypto.randomUUID()}`
+
+sessionStorage.setItem(`${STORAGE_PREFIX}.clientId`, clientId)
 
 const elements = {
   setupView: document.querySelector("#setupView"),
   callView: document.querySelector("#callView"),
   waitingModal: document.querySelector("#waitingModal"),
   connectionHelpModal: document.querySelector("#connectionHelpModal"),
-  inviteLink: document.querySelector("#inviteLink"),
+  displayNameInput: document.querySelector("#displayNameInput"),
+  createModeBtn: document.querySelector("#createModeBtn"),
+  joinModeBtn: document.querySelector("#joinModeBtn"),
+  createForm: document.querySelector("#createForm"),
+  joinForm: document.querySelector("#joinForm"),
+  roomTitleInput: document.querySelector("#roomTitleInput"),
+  capacitySelect: document.querySelector("#capacitySelect"),
+  isPrivateCheck: document.querySelector("#isPrivateCheck"),
+  createPinWrap: document.querySelector("#createPinWrap"),
+  createPinInput: document.querySelector("#createPinInput"),
+  joinRoomCodeInput: document.querySelector("#joinRoomCodeInput"),
+  joinPinInput: document.querySelector("#joinPinInput"),
   setupStatusText: document.querySelector("#setupStatusText"),
+  createRoomBtn: document.querySelector("#createRoomBtn"),
+  joinRoomBtn: document.querySelector("#joinRoomBtn"),
   inviteBtn: document.querySelector("#inviteBtn"),
-  shareInviteBtn: document.querySelector("#shareInviteBtn"),
-  copyInviteBtn: document.querySelector("#copyInviteBtn"),
-  regenerateLinkBtn: document.querySelector("#regenerateLinkBtn"),
+  shareRoomBtn: document.querySelector("#shareRoomBtn"),
   closeWaitingModalBtn: document.querySelector("#closeWaitingModalBtn"),
   closeConnectionHelpBtn: document.querySelector("#closeConnectionHelpBtn"),
   dismissConnectionHelpBtn: document.querySelector("#dismissConnectionHelpBtn"),
@@ -26,67 +56,41 @@ const elements = {
   statusText: document.querySelector("#statusText"),
   callTitle: document.querySelector("#callTitle"),
   localVideo: document.querySelector("#localVideo"),
-  remoteVideo: document.querySelector("#remoteVideo"),
   localPlaceholder: document.querySelector("#localPlaceholder"),
-  remotePlaceholder: document.querySelector("#remotePlaceholder"),
-  localBadge: document.querySelector("#localBadge"),
-  peerBadge: document.querySelector("#peerBadge")
+  remoteGrid: document.querySelector("#remoteGrid"),
+  emptyStage: document.querySelector("#emptyStage"),
+  roomCodeDisplay: document.querySelector("#roomCodeDisplay"),
+  roomPinWrap: document.querySelector("#roomPinWrap"),
+  roomPinDisplay: document.querySelector("#roomPinDisplay"),
+  roomCapacityDisplay: document.querySelector("#roomCapacityDisplay")
 }
 
-const DEFAULT_PEER_MEDIA = {
+const DEFAULT_MEDIA_STATE = {
   audioEnabled: false,
   videoEnabled: false,
   hasVideo: false
 }
 
-const DEFAULT_ICE_SERVERS = [
-  {
-    urls: "stun:stun.cloudflare.com:3478"
-  }
-]
-
-const SOCKET_PING_INTERVAL_MS = 12000
-const SOCKET_PONG_TIMEOUT_MS = 30000
-const SIGNALING_RECONNECT_BASE_DELAY_MS = 1200
-const MAX_SIGNALING_RECONNECT_ATTEMPTS = 4
-const MAX_ICE_RESTART_ATTEMPTS = 2
-
-const clientId =
-  sessionStorage.getItem(`${STORAGE_PREFIX}.clientId`) ?? `wt-${crypto.randomUUID()}`
-
-sessionStorage.setItem(`${STORAGE_PREFIX}.clientId`, clientId)
-
 const state = {
   clientId,
-  invite: null,
-  roomId: null,
+  mode: "create",
+  room: null,
   socket: null,
   localStream: null,
-  remoteStream: null,
-  peerConnection: null,
-  pendingCandidates: [],
-  shouldOffer: false,
-  offerInFlight: false,
-  iceRestartAttempts: 0,
-  iceRestartInFlight: false,
-  peerName: "",
-  peerMedia: { ...DEFAULT_PEER_MEDIA },
+  peers: new Map(),
+  isJoining: false,
+  isLeaving: false,
+  isResetting: false,
   selfMedia: {
     audioEnabled: true,
     videoEnabled: true,
     hasVideo: true
   },
   iceServersPromise: null,
-  isLeaving: false,
-  isResetting: false,
-  isJoining: false,
   socketPingTimer: null,
   signalingReconnectTimer: null,
   reconnectAttempts: 0,
   lastPongAt: 0,
-  inviteBootstrapTimer: null,
-  autoEnterTimer: null,
-  shouldShowShareModal: false,
   waitingModalDismissed: false,
   networkOnline: navigator.onLine,
   wakeLock: null
@@ -96,17 +100,31 @@ bindEvents()
 bootstrap()
 
 function bindEvents() {
+  elements.createModeBtn.addEventListener("click", () => setMode("create"))
+  elements.joinModeBtn.addEventListener("click", () => setMode("join"))
+  elements.isPrivateCheck.addEventListener("change", toggleCreatePinVisibility)
+  elements.createForm.addEventListener("submit", (event) => {
+    void handleCreateSubmit(event)
+  })
+  elements.joinForm.addEventListener("submit", (event) => {
+    void handleJoinSubmit(event)
+  })
   elements.inviteBtn.addEventListener("click", openWaitingModal)
-  elements.shareInviteBtn.addEventListener("click", shareInviteLink)
-  elements.copyInviteBtn.addEventListener("click", copyInviteLink)
-  elements.regenerateLinkBtn.addEventListener("click", regenerateInviteLink)
+  elements.shareRoomBtn.addEventListener("click", () => {
+    void shareRoomInvite()
+  })
   elements.closeWaitingModalBtn.addEventListener("click", closeWaitingModal)
   elements.closeConnectionHelpBtn.addEventListener("click", closeConnectionHelpModal)
   elements.dismissConnectionHelpBtn.addEventListener("click", closeConnectionHelpModal)
-  elements.retryConnectionBtn.addEventListener("click", retryCurrentCall)
-  elements.leaveBtn.addEventListener("click", leaveCall)
+  elements.retryConnectionBtn.addEventListener("click", () => {
+    void retryCurrentCall()
+  })
+  elements.leaveBtn.addEventListener("click", () => {
+    void leaveCall()
+  })
   elements.toggleMicBtn.addEventListener("click", toggleMicrophone)
   elements.toggleCameraBtn.addEventListener("click", toggleCamera)
+
   elements.waitingModal.addEventListener("click", (event) => {
     if (event.target === elements.waitingModal) {
       closeWaitingModal()
@@ -117,7 +135,7 @@ function bindEvents() {
       closeConnectionHelpModal()
     }
   })
-  window.addEventListener("hashchange", handleHashChange)
+
   window.addEventListener("online", handleNetworkOnline)
   window.addEventListener("offline", handleNetworkOffline)
   document.addEventListener("visibilitychange", handleVisibilityChange)
@@ -131,207 +149,195 @@ function bindEvents() {
 }
 
 function bootstrap() {
-  const { invite, fromSharedLink } = ensureInvite()
-  state.invite = invite
-  state.shouldShowShareModal = !fromSharedLink
-  state.waitingModalDismissed = false
-  renderInvite()
-  renderLocalPreviewState()
-  renderRemoteState()
+  const savedDisplayName = localStorage.getItem(`${STORAGE_PREFIX}.displayName`)
+  state.displayName = sanitizeName(savedDisplayName || DEFAULT_DISPLAY_NAME)
+  elements.displayNameInput.value = state.displayName
+  elements.roomTitleInput.value = `${state.displayName}의 방`
+  elements.capacitySelect.value = "4"
+  elements.isPrivateCheck.checked = false
+  elements.createPinInput.value = ""
+  elements.joinRoomCodeInput.value = ""
+  elements.joinPinInput.value = ""
+
+  setMode("create")
+  toggleCreatePinVisibility()
   hideWaitingModal({ manual: false })
   hideConnectionHelpModal()
+  updateRoomMetaUI()
+  renderRemoteStageState()
+  renderLocalPreviewState()
   setView("setup")
-  setStatus("처음 들어오면 2초 뒤 링크를 만들고, 3초 뒤 통화 화면으로 전환됩니다.")
+  setStatus("방을 만들거나 방 키(4자리)로 입장해 주세요.")
   updateControls()
+}
 
-  if (fromSharedLink) {
-    setStatus("공유 링크를 확인했습니다. 바로 통화 화면으로 들어갑니다.")
-    void joinCall()
+function setMode(mode) {
+  if (state.isJoining) {
     return
   }
 
-  beginIntroRedirect()
+  state.mode = mode === "join" ? "join" : "create"
+  const isCreate = state.mode === "create"
+  elements.createModeBtn.classList.toggle("active", isCreate)
+  elements.joinModeBtn.classList.toggle("active", !isCreate)
+  elements.createForm.classList.toggle("hidden", !isCreate)
+  elements.joinForm.classList.toggle("hidden", isCreate)
 }
 
-function ensureInvite() {
-  const fromHash = parseInviteHash(location.hash)
-  if (fromHash) {
-    return {
-      invite: fromHash,
-      fromSharedLink: true
-    }
-  }
-
-  return {
-    invite: null,
-    fromSharedLink: false
+function toggleCreatePinVisibility() {
+  const visible = elements.isPrivateCheck.checked
+  elements.createPinWrap.classList.toggle("hidden", !visible)
+  if (!visible) {
+    elements.createPinInput.value = ""
   }
 }
 
-function handleHashChange() {
-  const nextInvite = parseInviteHash(location.hash)
-  if (!nextInvite) {
+async function handleCreateSubmit(event) {
+  event.preventDefault()
+  if (state.isJoining) {
     return
   }
 
-  if (state.localStream || state.socket) {
-    if (state.invite) {
-      replaceInviteHash(state.invite)
-    }
-    setStatus("통화 중에는 링크를 바꿀 수 없습니다.")
+  const displayName = readAndPersistDisplayName()
+  const roomTitleRaw = elements.roomTitleInput.value.trim()
+  const roomTitle = roomTitleRaw || `${displayName}의 방`
+  const capacity = Number(elements.capacitySelect.value)
+  const isPrivate = elements.isPrivateCheck.checked
+  const pin = onlyDigits(elements.createPinInput.value).slice(0, 4)
+
+  if (!ALLOWED_CAPACITIES.has(capacity)) {
+    setStatus("최대 인원은 4명, 6명, 8명 중에서 선택해 주세요.")
     return
   }
 
-  clearIntroTimers()
-  state.invite = nextInvite
-  state.shouldShowShareModal = false
-  state.waitingModalDismissed = false
-  renderInvite()
-  setStatus("공유 링크를 불러왔습니다. 바로 통화 화면으로 들어갑니다.")
-  void joinCall()
-}
-
-function createInvite() {
-  return {
-    room: randomToken(10),
-    key: randomToken(16)
-  }
-}
-
-function parseInviteHash(hashValue) {
-  const raw = hashValue.replace(/^#/, "")
-  const params = new URLSearchParams(raw)
-  const room = (params.get("room") ?? "").trim()
-  const key = (params.get("key") ?? "").trim()
-
-  if (!room || !key) {
-    return null
-  }
-
-  return { room, key }
-}
-
-function replaceInviteHash(invite) {
-  const params = new URLSearchParams({
-    room: invite.room,
-    key: invite.key
-  })
-  history.replaceState(null, "", `#${params.toString()}`)
-}
-
-function buildInviteUrl(invite) {
-  return `${location.origin}${location.pathname}#room=${invite.room}&key=${invite.key}`
-}
-
-function renderInvite() {
-  elements.inviteLink.textContent = state.invite ? buildInviteUrl(state.invite) : ""
-}
-
-async function copyInviteLink() {
-  const inviteText = elements.inviteLink.textContent ?? ""
-  if (!inviteText) {
+  if (isPrivate && !PIN_REGEX.test(pin)) {
+    setStatus("비공개방은 비밀번호 4자리를 입력해 주세요.")
     return
   }
+
+  setSetupBusy(true)
+  setStatus("방을 생성하는 중입니다...")
 
   try {
-    await navigator.clipboard.writeText(inviteText)
-  } catch {
-    const helper = document.createElement("textarea")
-    helper.value = inviteText
-    document.body.append(helper)
-    helper.select()
-    document.execCommand("copy")
-    helper.remove()
-  }
+    const payload = await fetchJsonOrThrow("/api/rooms", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        title: roomTitle,
+        capacity,
+        isPrivate,
+        pin
+      })
+    })
 
-  setStatus("개인 링크를 복사했습니다.")
-}
-
-async function shareInviteLink() {
-  const inviteText = elements.inviteLink.textContent ?? ""
-  if (!inviteText) {
-    return
-  }
-
-  const shareData = {
-    title: "워키토키 링크",
-    text: "이 링크로 들어오면 바로 통화할 수 있어요.",
-    url: inviteText
-  }
-
-  if (typeof navigator.share === "function") {
-    try {
-      await navigator.share(shareData)
-      setStatus("링크 전달 창을 열었습니다.")
-      return
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return
-      }
+    state.room = {
+      code: payload.roomCode,
+      roomTitle: payload.roomTitle,
+      capacity: payload.capacity,
+      isPrivate: payload.isPrivate,
+      pin: payload.isPrivate ? pin : ""
     }
+    state.waitingModalDismissed = false
+    updateRoomMetaUI()
+    setStatus(`방 키 ${state.room.code} 생성 완료. 통화 화면으로 전환합니다.`)
+    await joinCurrentRoom()
+  } catch (error) {
+    setStatus(readErrorMessage(error, "방 생성에 실패했습니다. 잠시 후 다시 시도해 주세요."))
+  } finally {
+    setSetupBusy(false)
   }
-
-  await copyInviteLink()
-  setStatus("공유 시트를 열 수 없어 링크를 복사했습니다.")
 }
 
-async function regenerateInviteLink() {
-  const shouldRejoin = Boolean(state.socket || state.localStream)
-
-  if (shouldRejoin) {
-    await hardReset({ returnToSetup: false })
-  }
-
-  state.invite = createInvite()
-  state.shouldShowShareModal = true
-  state.waitingModalDismissed = false
-  replaceInviteHash(state.invite)
-  renderInvite()
-
-  if (shouldRejoin) {
-    setView("call")
-    setStatus("새 링크를 만들었습니다. 이 링크를 다시 전달해 주세요.")
-    await joinCall({ reuseCurrentView: true })
+async function handleJoinSubmit(event) {
+  event.preventDefault()
+  if (state.isJoining) {
     return
   }
 
-  setStatus("새 개인 링크를 만들었습니다.")
+  const displayName = readAndPersistDisplayName()
+  const roomCode = onlyDigits(elements.joinRoomCodeInput.value).slice(0, 4)
+  const pin = onlyDigits(elements.joinPinInput.value).slice(0, 4)
+
+  if (!ROOM_CODE_REGEX.test(roomCode)) {
+    setStatus("방 키는 숫자 4자리입니다.")
+    return
+  }
+
+  if (pin && !PIN_REGEX.test(pin)) {
+    setStatus("비밀번호는 숫자 4자리로 입력해 주세요.")
+    return
+  }
+
+  setSetupBusy(true)
+  setStatus("방 입장 가능 여부를 확인하는 중입니다...")
+
+  try {
+    const payload = await fetchJsonOrThrow(`/api/rooms/${roomCode}/join`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        pin
+      })
+    })
+
+    state.room = {
+      code: roomCode,
+      roomTitle: payload.roomTitle,
+      capacity: payload.capacity,
+      isPrivate: payload.isPrivate,
+      pin: payload.isPrivate ? pin : ""
+    }
+
+    if (state.room.isPrivate && !PIN_REGEX.test(state.room.pin)) {
+      setStatus("비공개방입니다. 비밀번호 4자리를 입력해 주세요.")
+      return
+    }
+
+    state.waitingModalDismissed = false
+    updateRoomMetaUI()
+    setStatus(`${displayName} 님으로 방 ${roomCode}에 입장합니다.`)
+    await joinCurrentRoom()
+  } catch (error) {
+    setStatus(readErrorMessage(error, "방 입장에 실패했습니다. 방 키를 다시 확인해 주세요."))
+  } finally {
+    setSetupBusy(false)
+  }
 }
 
-async function joinCall(options = {}) {
-  if (!state.invite || state.socket || state.peerConnection || state.isJoining) {
+async function joinCurrentRoom(options = {}) {
+  if (!state.room || state.socket || state.isJoining) {
     return
   }
 
   const { reuseCurrentView = false } = options
-
-  clearIntroTimers()
   clearSignalingReconnectTimer()
   state.isJoining = true
   state.reconnectAttempts = 0
   setView("call")
   hideConnectionHelpModal()
-  setStatus("카메라와 마이크를 준비하고 있습니다...")
+  setStatus("카메라와 마이크 권한을 확인하는 중입니다...")
   updateControls(true)
 
   try {
     await prepareLocalMedia()
     await requestWakeLockIfSupported()
-    state.roomId = await deriveRoomId(state.invite)
-    await openSignalingSocket(DEFAULT_DISPLAY_NAME)
-    if (state.shouldShowShareModal) {
-      setStatus("상대가 아직 없다면 링크 전달 모달에서 바로 보낼 수 있습니다.")
-    } else {
-      setStatus("상대방이 같은 링크로 들어오기를 기다리는 중입니다.")
-    }
+    await openSignalingSocket(state.displayName)
+    setStatus("대기실에 입장했습니다. 다른 참여자를 기다리는 중입니다.")
+    syncWaitingModal()
   } catch (error) {
     console.error(error)
-    setStatus(
-      error instanceof Error
-        ? error.message
-        : "통화를 시작하지 못했습니다. 브라우저 권한과 네트워크를 확인해 주세요."
-    )
-    await hardReset({ returnToSetup: !reuseCurrentView })
+    setStatus(readErrorMessage(error, "통화 화면으로 전환하지 못했습니다. 다시 시도해 주세요."))
+    await hardReset({
+      returnToSetup: !reuseCurrentView,
+      preserveRoom: true
+    })
+    if (reuseCurrentView) {
+      openConnectionHelpModal()
+    }
   } finally {
     state.isJoining = false
     updateControls()
@@ -340,7 +346,6 @@ async function joinCall(options = {}) {
 
 async function prepareLocalMedia() {
   stopTracks(state.localStream)
-
   let stream = null
 
   try {
@@ -363,7 +368,7 @@ async function prepareLocalMedia() {
       },
       video: false
     })
-    setStatus("카메라를 열 수 없어 이번 통화는 음성 전용으로 전환했습니다.")
+    setStatus("카메라 권한이 없어 이번 통화는 음성 중심으로 시작합니다.")
   }
 
   state.localStream = stream
@@ -372,31 +377,20 @@ async function prepareLocalMedia() {
   renderLocalPreviewState()
 }
 
-function readLocalMediaState() {
-  const audioTrack = state.localStream?.getAudioTracks()[0] ?? null
-  const videoTrack = state.localStream?.getVideoTracks()[0] ?? null
-
-  return {
-    audioEnabled: audioTrack ? audioTrack.enabled : false,
-    videoEnabled: videoTrack ? videoTrack.enabled : false,
-    hasVideo: Boolean(videoTrack)
-  }
-}
-
-async function deriveRoomId(invite) {
-  const payload = new TextEncoder().encode(`${invite.room}:${invite.key}`)
-  const digest = await crypto.subtle.digest("SHA-256", payload)
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 64)
-}
-
 function openSignalingSocket(displayName) {
   return new Promise((resolve, reject) => {
-    const url = new URL(`/api/room/${state.roomId}/ws`, location.origin)
+    if (!state.room) {
+      reject(new Error("입장할 방 정보가 없습니다."))
+      return
+    }
+
+    const url = new URL(`/api/rooms/${state.room.code}/ws`, location.origin)
     url.protocol = location.protocol === "https:" ? "wss:" : "ws:"
     url.searchParams.set("clientId", state.clientId)
     url.searchParams.set("name", displayName)
+    if (state.room.pin) {
+      url.searchParams.set("pin", state.room.pin)
+    }
 
     const socket = new WebSocket(url)
     let settled = false
@@ -410,7 +404,7 @@ function openSignalingSocket(displayName) {
       settled = true
       startSocketHeartbeat()
       sendPresence()
-      syncWaitingModal()
+      updateControls()
       resolve()
     })
 
@@ -420,51 +414,46 @@ function openSignalingSocket(displayName) {
 
     socket.addEventListener("error", () => {
       if (!settled) {
-        reject(new Error("신호 서버에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요."))
+        reject(new Error("신호 서버 연결을 시작하지 못했습니다."))
       }
     })
 
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       const userInitiated = state.isLeaving || state.isResetting
-      const connectionState = state.peerConnection?.connectionState ?? "closed"
-      const keepPeerConnection =
-        connectionState === "connected" || connectionState === "connecting"
 
       if (!settled) {
-        reject(new Error("방에 연결하지 못했습니다. 링크가 이미 사용 중일 수 있습니다."))
+        reject(new Error(event.reason || "방 서버와 연결하지 못했습니다."))
         return
       }
 
       stopSocketHeartbeat()
       state.socket = null
-      state.shouldOffer = false
-      state.offerInFlight = false
-      state.isLeaving = false
 
-      if (state.peerConnection && !keepPeerConnection) {
-        resetPeerConnection()
+      if (!userInitiated && isFatalSocketClose(event.code)) {
+        setStatus(event.reason || "방 연결이 종료되었습니다.")
+        void hardReset({
+          returnToSetup: true,
+          preserveRoom: false
+        })
+        return
       }
 
-      if (!userInitiated && state.localStream && state.roomId) {
-        if (keepPeerConnection) {
-          setStatus("연결 채널이 끊겨 자동으로 복구 중입니다.")
-        } else {
-          setStatus("세션 연결이 끊겼습니다. 자동으로 다시 연결합니다.")
-        }
+      if (!userInitiated && state.localStream && state.room) {
+        setStatus("방 연결이 잠시 끊겨 자동으로 다시 연결합니다.")
         scheduleSignalingReconnect()
-      } else if (!userInitiated && state.localStream) {
-        setStatus("세션 연결이 종료되었습니다. 잠시 뒤 다시 시도해 주세요.")
       }
 
-      syncWaitingModal()
       updateControls()
     })
   })
 }
 
-async function handleSocketMessage(rawMessage) {
-  let message
+function isFatalSocketClose(code) {
+  return code === 4403 || code === 4404 || code === 4409 || code === 4410
+}
 
+async function handleSocketMessage(rawMessage) {
+  let message = null
   try {
     message = JSON.parse(rawMessage)
   } catch {
@@ -473,11 +462,13 @@ async function handleSocketMessage(rawMessage) {
 
   switch (message.type) {
     case "joined":
-      setStatus("워키토키 방에 들어왔습니다. 상대방을 기다리는 중입니다.")
-      break
-    case "room-full":
-      setStatus(message.message ?? "이 링크는 이미 사용 중입니다.")
-      await hardReset({ returnToSetup: true })
+      if (message.room) {
+        mergeRoomMeta(message.room)
+      }
+      state.waitingModalDismissed = false
+      updateRoomMetaUI()
+      setStatus("대기실에 입장했습니다. 참여자를 기다리는 중입니다.")
+      syncWaitingModal()
       break
     case "room-state":
       await handleRoomState(message)
@@ -486,23 +477,25 @@ async function handleSocketMessage(rawMessage) {
       await handleSignal(message)
       break
     case "presence":
-      applyPeerPresence(message.media)
+      applyPeerPresence(message.from, message.media)
       break
     case "peer-left":
-      state.peerName = ""
-      state.peerMedia = { ...DEFAULT_PEER_MEDIA }
-      state.iceRestartAttempts = 0
-      state.iceRestartInFlight = false
-      resetPeerConnection()
-      renderRemoteState()
+      removePeer(message.from)
+      setStatus("참여자 한 명이 방에서 나갔습니다.")
       syncWaitingModal()
-      setStatus("상대방이 나갔습니다. 같은 화면에서 다시 기다릴 수 있습니다.")
+      break
+    case "room-full":
+      setStatus(message.message ?? "방 인원이 가득 찼습니다.")
+      await hardReset({
+        returnToSetup: true,
+        preserveRoom: false
+      })
       break
     case "pong":
       state.lastPongAt = Date.now()
       break
     case "error":
-      setStatus(message.message ?? "세션 처리 중 오류가 발생했습니다.")
+      setStatus(message.message ?? "방 처리 중 오류가 발생했습니다.")
       break
     default:
       break
@@ -511,68 +504,99 @@ async function handleSocketMessage(rawMessage) {
 
 async function handleRoomState(message) {
   const members = Array.isArray(message.members) ? message.members : []
-  const peer = members.find((member) => member.clientId !== state.clientId) ?? null
+  mergeRoomMeta(message.room)
+  updateRoomMetaUI()
 
-  state.shouldOffer = Boolean(message.shouldOffer)
-  state.peerName = peer?.name ?? ""
-  state.peerMedia = peer?.media ?? { ...DEFAULT_PEER_MEDIA }
-  renderRemoteState()
+  const peerMembers = members.filter((member) => member.clientId !== state.clientId)
+  const activePeerIds = new Set(peerMembers.map((member) => member.clientId))
 
-  if (!peer) {
-    resetPeerConnection()
-    syncWaitingModal()
-    setStatus("상대방이 같은 링크로 들어오기를 기다리는 중입니다.")
+  for (const member of peerMembers) {
+    const peer = await ensurePeerConnection(member.clientId, member.name)
+    if (!peer) {
+      continue
+    }
+
+    peer.name = sanitizeName(member.name)
+    peer.media = normalizeMedia(member.media)
+    updatePeerTile(peer)
+  }
+
+  for (const peerId of state.peers.keys()) {
+    if (!activePeerIds.has(peerId)) {
+      removePeer(peerId)
+    }
+  }
+
+  for (const member of peerMembers) {
+    if (shouldInitiateOffer(member.clientId)) {
+      void maybeCreateOffer(member.clientId)
+    }
+  }
+
+  if (peerMembers.length > 0) {
+    state.waitingModalDismissed = false
+    hideWaitingModal({ manual: false })
+  }
+
+  renderRemoteStageState()
+  syncWaitingModal()
+
+  const connectedCount = peerMembers.length + 1
+  if (peerMembers.length === 0) {
+    setStatus("대기실에서 다른 참여자를 기다리는 중입니다.")
+  } else {
+    setStatus(`현재 ${connectedCount}명 연결됨 (최대 ${state.room?.capacity ?? 4}명)`)
+  }
+}
+
+function mergeRoomMeta(roomMeta) {
+  if (!roomMeta || !state.room) {
     return
   }
 
-  hideWaitingModal({ manual: false })
-
-  if (state.shouldOffer && !state.peerConnection && !state.offerInFlight) {
-    await maybeCreateOffer()
-  } else if (!state.shouldOffer) {
-    setStatus(`${peerLabel()} 연결 중입니다.`)
+  state.room = {
+    ...state.room,
+    roomTitle:
+      typeof roomMeta.roomTitle === "string" && roomMeta.roomTitle.trim()
+        ? roomMeta.roomTitle.trim()
+        : state.room.roomTitle,
+    capacity: ALLOWED_CAPACITIES.has(Number(roomMeta.capacity))
+      ? Number(roomMeta.capacity)
+      : state.room.capacity,
+    isPrivate: Boolean(roomMeta.isPrivate)
   }
 }
 
-async function maybeCreateOffer({ iceRestart = false } = {}) {
-  state.offerInFlight = true
-
-  try {
-    await ensurePeerConnection()
-    if (!state.peerConnection || state.peerConnection.signalingState !== "stable") {
-      return
-    }
-
-    const offer = await state.peerConnection.createOffer(iceRestart ? { iceRestart: true } : {})
-    await state.peerConnection.setLocalDescription(offer)
-    sendSocketMessage({
-      type: "signal",
-      description: state.peerConnection.localDescription
-    })
-    if (iceRestart) {
-      setStatus("연결을 다시 맞추는 중입니다.")
-    } else {
-      setStatus("연결 요청을 보냈습니다. 상대방 응답을 기다리는 중입니다.")
-    }
-  } finally {
-    state.offerInFlight = false
-  }
+function shouldInitiateOffer(peerId) {
+  return state.clientId.localeCompare(peerId) > 0
 }
 
-async function ensurePeerConnection() {
-  if (state.peerConnection) {
-    return state.peerConnection
+async function ensurePeerConnection(peerId, peerName = "") {
+  if (!peerId) {
+    return null
+  }
+
+  let peer = state.peers.get(peerId)
+  if (!peer) {
+    peer = createPeerState(peerId, peerName)
+    state.peers.set(peerId, peer)
+  }
+
+  if (peer.connection) {
+    return peer
   }
 
   const iceServers = await getIceServers()
+  const currentPeer = state.peers.get(peerId)
+  if (!currentPeer || currentPeer !== peer) {
+    return null
+  }
+
   const connection = new RTCPeerConnection({ iceServers })
-  const remoteStream = new MediaStream()
-
-  state.peerConnection = connection
-  state.remoteStream = remoteStream
-  state.pendingCandidates = []
-
-  elements.remoteVideo.srcObject = remoteStream
+  peer.connection = connection
+  peer.connectionState = connection.connectionState
+  peer.stream ??= new MediaStream()
+  peer.videoEl.srcObject = peer.stream
 
   for (const track of state.localStream?.getTracks() ?? []) {
     connection.addTrack(track, state.localStream)
@@ -582,155 +606,198 @@ async function ensurePeerConnection() {
     if (event.candidate) {
       sendSocketMessage({
         type: "signal",
+        to: peerId,
         candidate: event.candidate
       })
     }
   })
 
   connection.addEventListener("track", (event) => {
-    event.streams[0].getTracks().forEach((track) => {
-      const knownTrack = remoteStream.getTracks().find((item) => item.id === track.id)
-      if (!knownTrack) {
-        remoteStream.addTrack(track)
-      }
-    })
-
-    elements.remoteVideo.srcObject = remoteStream
-    if (event.streams[0].getVideoTracks().length > 0) {
-      state.peerMedia.hasVideo = true
-      state.peerMedia.videoEnabled = true
+    const [remoteStream] = event.streams
+    if (!remoteStream) {
+      return
     }
-    renderRemoteState()
+
+    for (const track of remoteStream.getTracks()) {
+      const knownTrack = peer.stream.getTracks().find((item) => item.id === track.id)
+      if (!knownTrack) {
+        peer.stream.addTrack(track)
+      }
+    }
+
+    peer.videoEl.srcObject = peer.stream
+    if (remoteStream.getVideoTracks().length > 0) {
+      peer.media.hasVideo = true
+      peer.media.videoEnabled = true
+    }
+    updatePeerTile(peer)
   })
 
   connection.addEventListener("connectionstatechange", () => {
-    const nextState = connection.connectionState
+    peer.connectionState = connection.connectionState
 
-    if (nextState === "connected") {
-      state.iceRestartAttempts = 0
-      state.iceRestartInFlight = false
+    if (peer.connectionState === "connected") {
       hideConnectionHelpModal()
-      setStatus("통화 중입니다.")
-    } else if (nextState === "connecting") {
-      setStatus("통화 연결 중입니다.")
-    } else if (nextState === "disconnected") {
-      setStatus("연결이 잠시 불안정합니다.")
-      maybeAutoRepairConnection("disconnected")
-    } else if (nextState === "failed") {
-      setStatus("연결이 잘 되지 않습니다. 네트워크를 바꾸거나 잠시 후 다시 시도해 주세요.")
-      const startedRecovery = maybeAutoRepairConnection("failed")
-      if (!startedRecovery) {
-        openConnectionHelpModal()
-      }
+    } else if (peer.connectionState === "failed") {
+      openConnectionHelpModal()
+      setStatus("직접 연결이 어려워 보입니다. 연결 가이드를 확인해 주세요.")
     }
+
+    updatePeerTile(peer)
   })
 
-  updateControls()
-  return connection
+  return peer
 }
 
-function maybeAutoRepairConnection(reason) {
-  if (!state.peerConnection || state.iceRestartInFlight) {
-    return false
+function createPeerState(peerId, peerName) {
+  const tile = document.createElement("article")
+  tile.className = "peer-tile"
+  tile.dataset.peerId = peerId
+
+  const videoEl = document.createElement("video")
+  videoEl.className = "call-video hidden"
+  videoEl.autoplay = true
+  videoEl.playsInline = true
+
+  const placeholderEl = document.createElement("div")
+  placeholderEl.className = "peer-placeholder"
+  placeholderEl.innerHTML = "<strong>연결 중</strong><span>상대 영상 준비 중</span>"
+
+  const nameTagEl = document.createElement("span")
+  nameTagEl.className = "peer-name"
+  nameTagEl.textContent = sanitizeName(peerName)
+
+  tile.append(videoEl, placeholderEl, nameTagEl)
+  elements.remoteGrid.append(tile)
+
+  return {
+    id: peerId,
+    name: sanitizeName(peerName),
+    media: { ...DEFAULT_MEDIA_STATE },
+    stream: new MediaStream(),
+    connection: null,
+    connectionState: "new",
+    pendingCandidates: [],
+    offerInFlight: false,
+    tile,
+    videoEl,
+    placeholderEl,
+    nameTagEl
   }
-
-  if (state.socket?.readyState !== WebSocket.OPEN) {
-    return false
-  }
-
-  if (!state.peerName) {
-    return false
-  }
-
-  if (state.iceRestartAttempts >= MAX_ICE_RESTART_ATTEMPTS) {
-    return false
-  }
-
-  state.iceRestartAttempts += 1
-  state.iceRestartInFlight = true
-  setStatus(`연결을 다시 맞추는 중입니다. (${state.iceRestartAttempts}/${MAX_ICE_RESTART_ATTEMPTS})`)
-
-  void requestIceRestart(reason).finally(() => {
-    state.iceRestartInFlight = false
-  })
-
-  return true
 }
 
-async function requestIceRestart(reason) {
+async function maybeCreateOffer(peerId, options = {}) {
+  const { iceRestart = false } = options
+  const peer = await ensurePeerConnection(peerId)
+  if (!peer?.connection || peer.offerInFlight) {
+    return
+  }
+
+  const connection = peer.connection
+  if (connection.signalingState !== "stable") {
+    return
+  }
+
+  const alreadyNegotiated = Boolean(
+    connection.currentLocalDescription ||
+      connection.currentRemoteDescription ||
+      connection.localDescription ||
+      connection.remoteDescription
+  )
+
+  if (!iceRestart && alreadyNegotiated) {
+    return
+  }
+
+  peer.offerInFlight = true
+
   try {
-    await maybeCreateOffer({ iceRestart: true })
-  } catch (error) {
-    console.error("Failed to restart ICE", reason, error)
+    const offer = await connection.createOffer(iceRestart ? { iceRestart: true } : {})
+    await connection.setLocalDescription(offer)
+    sendSocketMessage({
+      type: "signal",
+      to: peerId,
+      description: connection.localDescription
+    })
+  } finally {
+    peer.offerInFlight = false
   }
 }
 
 async function handleSignal(message) {
-  if (!message.description && !message.candidate) {
+  const from = sanitizeClientId(message.from)
+  if (!from) {
     return
   }
 
-  await ensurePeerConnection()
+  const peer = await ensurePeerConnection(from)
+  if (!peer?.connection) {
+    return
+  }
 
   if (message.description) {
-    await applyRemoteDescription(message.description)
+    await applyRemoteDescription(peer, message.description)
   }
 
   if (message.candidate) {
-    await applyRemoteCandidate(message.candidate)
+    await applyRemoteCandidate(peer, message.candidate)
   }
 }
 
-async function applyRemoteDescription(description) {
-  const connection = state.peerConnection
+async function applyRemoteDescription(peer, description) {
+  const connection = peer.connection
   if (!connection) {
     return
   }
 
   if (description.type === "offer" && connection.signalingState !== "stable") {
-    await connection.setLocalDescription({ type: "rollback" })
+    try {
+      await connection.setLocalDescription({ type: "rollback" })
+    } catch {
+      // Ignore rollback errors.
+    }
   }
 
   await connection.setRemoteDescription(description)
-  await flushPendingCandidates()
+  await flushPeerCandidates(peer)
 
   if (description.type === "offer") {
     const answer = await connection.createAnswer()
     await connection.setLocalDescription(answer)
     sendSocketMessage({
       type: "signal",
+      to: peer.id,
       description: connection.localDescription
     })
-    setStatus("응답을 보냈습니다. 연결을 마무리하는 중입니다.")
   }
 }
 
-async function applyRemoteCandidate(candidate) {
-  const connection = state.peerConnection
+async function applyRemoteCandidate(peer, candidate) {
+  const connection = peer.connection
   if (!connection) {
     return
   }
 
   if (!connection.remoteDescription) {
-    state.pendingCandidates.push(candidate)
+    peer.pendingCandidates.push(candidate)
     return
   }
 
   try {
     await connection.addIceCandidate(candidate)
   } catch (error) {
-    console.warn("Failed to apply remote ICE candidate", error)
+    console.warn("Failed to apply remote candidate", error)
   }
 }
 
-async function flushPendingCandidates() {
-  const connection = state.peerConnection
+async function flushPeerCandidates(peer) {
+  const connection = peer.connection
   if (!connection || !connection.remoteDescription) {
     return
   }
 
-  while (state.pendingCandidates.length > 0) {
-    const candidate = state.pendingCandidates.shift()
+  while (peer.pendingCandidates.length > 0) {
+    const candidate = peer.pendingCandidates.shift()
     if (!candidate) {
       continue
     }
@@ -738,29 +805,19 @@ async function flushPendingCandidates() {
     try {
       await connection.addIceCandidate(candidate)
     } catch (error) {
-      console.warn("Failed to flush pending ICE candidate", error)
+      console.warn("Failed to flush queued ICE candidate", error)
     }
   }
 }
 
-async function getIceServers() {
-  if (!state.iceServersPromise) {
-    state.iceServersPromise = fetch("/api/ice")
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("ICE 서버 설정을 불러오지 못했습니다.")
-        }
-
-        const payload = await response.json()
-        if (!Array.isArray(payload.iceServers) || payload.iceServers.length === 0) {
-          return DEFAULT_ICE_SERVERS
-        }
-        return payload.iceServers
-      })
-      .catch(() => DEFAULT_ICE_SERVERS)
+function applyPeerPresence(peerId, media) {
+  const peer = state.peers.get(sanitizeClientId(peerId))
+  if (!peer) {
+    return
   }
 
-  return state.iceServersPromise
+  peer.media = normalizeMedia(media)
+  updatePeerTile(peer)
 }
 
 function sendPresence() {
@@ -772,21 +829,123 @@ function sendPresence() {
   renderLocalPreviewState()
 }
 
-function applyPeerPresence(media) {
-  state.peerMedia = {
-    audioEnabled: Boolean(media?.audioEnabled),
-    videoEnabled: Boolean(media?.videoEnabled),
-    hasVideo: Boolean(media?.hasVideo)
-  }
-  renderRemoteState()
-}
-
 function sendSocketMessage(payload) {
   if (state.socket?.readyState !== WebSocket.OPEN) {
     return
   }
 
   state.socket.send(JSON.stringify(payload))
+}
+
+function removePeer(peerId) {
+  const safePeerId = sanitizeClientId(peerId)
+  if (!safePeerId) {
+    return
+  }
+
+  const peer = state.peers.get(safePeerId)
+  if (!peer) {
+    return
+  }
+
+  if (peer.connection) {
+    try {
+      peer.connection.close()
+    } catch {
+      // Ignore close errors.
+    }
+  }
+
+  if (peer.tile?.parentNode) {
+    peer.tile.parentNode.removeChild(peer.tile)
+  }
+
+  state.peers.delete(safePeerId)
+  renderRemoteStageState()
+}
+
+function renderRemoteStageState() {
+  const hasPeers = state.peers.size > 0
+  elements.remoteGrid.dataset.count = String(state.peers.size)
+  elements.emptyStage.classList.toggle("hidden", hasPeers)
+  elements.remoteGrid.classList.toggle("hidden", !hasPeers)
+  updateCallTitle()
+}
+
+function updatePeerTile(peer) {
+  const hasVideoTrack = peer.stream.getVideoTracks().length > 0
+  const showVideo = hasVideoTrack && peer.media.hasVideo && peer.media.videoEnabled
+
+  peer.videoEl.classList.toggle("hidden", !showVideo)
+  peer.placeholderEl.classList.toggle("hidden", showVideo)
+  peer.nameTagEl.textContent = peerDisplayName(peer)
+
+  if (!showVideo) {
+    if (peer.connectionState === "connected") {
+      peer.placeholderEl.innerHTML = `<strong>${peerDisplayName(peer)}</strong><span>카메라 꺼짐 또는 음성 전용</span>`
+    } else {
+      peer.placeholderEl.innerHTML = `<strong>${peerDisplayName(peer)}</strong><span>연결 중...</span>`
+    }
+  }
+}
+
+function peerDisplayName(peer) {
+  const clean = sanitizeName(peer.name)
+  if (!clean || clean === DEFAULT_DISPLAY_NAME) {
+    return "참여자"
+  }
+  return clean
+}
+
+function readLocalMediaState() {
+  const audioTrack = state.localStream?.getAudioTracks()[0] ?? null
+  const videoTrack = state.localStream?.getVideoTracks()[0] ?? null
+
+  return {
+    audioEnabled: audioTrack ? audioTrack.enabled : false,
+    videoEnabled: videoTrack ? videoTrack.enabled : false,
+    hasVideo: Boolean(videoTrack)
+  }
+}
+
+function renderLocalPreviewState() {
+  const hasStream = Boolean(state.localStream)
+  const media = hasStream ? readLocalMediaState() : state.selfMedia
+  const showVideo = hasStream && media.hasVideo && media.videoEnabled
+
+  elements.localVideo.classList.toggle("hidden", !showVideo)
+  elements.localPlaceholder.classList.toggle("hidden", showVideo)
+
+  if (!hasStream) {
+    elements.localPlaceholder.innerHTML =
+      "<strong>내 화면 미리보기</strong><span>통화를 시작하면 여기에 표시됩니다.</span>"
+    return
+  }
+
+  if (showVideo) {
+    return
+  }
+
+  if (media.hasVideo) {
+    elements.localPlaceholder.innerHTML = "<strong>카메라 꺼짐</strong><span>버튼으로 다시 켤 수 있습니다.</span>"
+  } else {
+    elements.localPlaceholder.innerHTML = "<strong>음성 전용</strong><span>카메라 권한이 없거나 꺼져 있습니다.</span>"
+  }
+}
+
+function updateCallTitle() {
+  if (!state.room) {
+    elements.callTitle.textContent = "방 연결 준비 중"
+    return
+  }
+
+  const title = state.room.roomTitle?.trim()
+  if (title) {
+    elements.callTitle.textContent = title
+    return
+  }
+
+  elements.callTitle.textContent = `방 키 ${state.room.code}`
 }
 
 function toggleMicrophone() {
@@ -813,50 +972,47 @@ function toggleCamera() {
 
 async function leaveCall() {
   state.isLeaving = true
-  clearIntroTimers()
   clearSignalingReconnectTimer()
   stopSocketHeartbeat()
   hideConnectionHelpModal()
-
-  if (state.socket?.readyState === WebSocket.OPEN) {
-    state.socket.close(1000, "User left")
-  }
-
-  await hardReset({ returnToSetup: true })
-  setStatus("통화를 종료했습니다. 다시 들어가려면 링크를 다시 열어 주세요.")
+  hideWaitingModal({ manual: false })
+  await hardReset({
+    returnToSetup: true,
+    preserveRoom: false
+  })
+  setStatus("통화를 종료했습니다. 새 방을 만들거나 방 키로 다시 입장할 수 있습니다.")
 }
 
-async function hardReset({ returnToSetup = true } = {}) {
+async function hardReset({ returnToSetup = true, preserveRoom = false } = {}) {
+  if (state.isResetting) {
+    return
+  }
+
   state.isResetting = true
-  clearIntroTimers()
   clearSignalingReconnectTimer()
   stopSocketHeartbeat()
-  resetPeerConnection()
 
   if (state.socket) {
     try {
-      state.socket.close()
+      state.socket.close(1000, "reset")
     } catch {
       // Ignore close errors.
     }
   }
-
   state.socket = null
-  state.roomId = null
-  state.shouldOffer = false
-  state.offerInFlight = false
-  state.iceRestartAttempts = 0
-  state.iceRestartInFlight = false
-  state.peerName = ""
-  state.peerMedia = { ...DEFAULT_PEER_MEDIA }
-  state.isLeaving = false
   state.isJoining = false
-  state.waitingModalDismissed = false
+  state.isLeaving = false
   state.reconnectAttempts = 0
   state.lastPongAt = 0
+  state.waitingModalDismissed = false
+
+  for (const peerId of Array.from(state.peers.keys())) {
+    removePeer(peerId)
+  }
 
   stopTracks(state.localStream)
   state.localStream = null
+  elements.localVideo.srcObject = null
   await releaseWakeLock()
   state.selfMedia = {
     audioEnabled: true,
@@ -864,100 +1020,38 @@ async function hardReset({ returnToSetup = true } = {}) {
     hasVideo: true
   }
 
-  elements.localVideo.srcObject = null
-  elements.remoteVideo.srcObject = null
-  hideWaitingModal({ manual: false })
+  if (!preserveRoom) {
+    state.room = null
+    elements.joinRoomCodeInput.value = ""
+    elements.joinPinInput.value = ""
+  }
+
+  updateRoomMetaUI()
   hideConnectionHelpModal()
+  hideWaitingModal({ manual: false })
 
   if (returnToSetup) {
     setView("setup")
   }
 
   renderLocalPreviewState()
-  renderRemoteState()
+  renderRemoteStageState()
   updateControls()
   state.isResetting = false
-}
-
-function resetPeerConnection() {
-  if (state.peerConnection) {
-    try {
-      state.peerConnection.close()
-    } catch {
-      // Ignore close errors.
-    }
-  }
-
-  state.peerConnection = null
-  state.remoteStream = null
-  state.pendingCandidates = []
-  state.iceRestartAttempts = 0
-  state.iceRestartInFlight = false
-  elements.remoteVideo.srcObject = null
-}
-
-function stopTracks(stream) {
-  for (const track of stream?.getTracks() ?? []) {
-    track.stop()
-  }
-}
-
-function renderLocalPreviewState() {
-  const hasStream = Boolean(state.localStream)
-  const media = state.localStream ? readLocalMediaState() : state.selfMedia
-  const showVideo = hasStream && media.hasVideo && media.videoEnabled
-  const micLabel = media.audioEnabled ? "마이크 켜짐" : "음소거"
-  const cameraLabel = media.hasVideo ? (media.videoEnabled ? "영상 켜짐" : "카메라 꺼짐") : "음성 전용"
-
-  elements.localBadge.textContent = hasStream ? `나 · ${cameraLabel}` : "나"
-  elements.localVideo.classList.toggle("hidden", !showVideo)
-  elements.localPlaceholder.classList.toggle("hidden", showVideo)
-  elements.localPlaceholder.innerHTML = hasStream
-    ? `<strong>${cameraLabel}</strong><span>${micLabel}</span>`
-    : "<strong>연결 준비 전</strong><span>곧 내 화면이 여기에 표시됩니다.</span>"
-}
-
-function renderRemoteState() {
-  const hasPeer = Boolean(state.peerName)
-  const showVideo = hasPeer && state.peerMedia.hasVideo && state.peerMedia.videoEnabled
-  const name = peerLabel()
-  const audioText = state.peerMedia.audioEnabled ? "마이크 켜짐" : "음소거"
-  const cameraText = state.peerMedia.hasVideo
-    ? state.peerMedia.videoEnabled
-      ? "영상 켜짐"
-      : "카메라 꺼짐"
-    : "음성 전용"
-
-  elements.callTitle.textContent = hasPeer ? name : "상대방을 기다리는 중"
-  elements.peerBadge.textContent = hasPeer ? `${name} · ${cameraText}` : "대기 중"
-  elements.remoteVideo.classList.toggle("hidden", !showVideo)
-  elements.remotePlaceholder.classList.toggle("hidden", showVideo)
-
-  if (!hasPeer) {
-    elements.remotePlaceholder.innerHTML =
-      "<strong>상대방을 기다리는 중</strong><span>같은 링크로 들어오면 바로 영상·음성 연결을 시작합니다.</span>"
-    return
-  }
-
-  if (!showVideo) {
-    elements.remotePlaceholder.innerHTML = `<strong>${name}</strong><span>${cameraText} · ${audioText}</span>`
-  }
 }
 
 function updateControls(isBusy = false) {
   const localAudioTrack = state.localStream?.getAudioTracks()[0] ?? null
   const localVideoTrack = state.localStream?.getVideoTracks()[0] ?? null
-  const joined = Boolean(state.socket)
+  const hasCallSession = Boolean(state.socket || state.localStream)
   const audioEnabled = Boolean(localAudioTrack?.enabled)
   const videoEnabled = Boolean(localVideoTrack?.enabled)
+  const onCallView = document.body.dataset.view === "call"
 
-  elements.inviteBtn.disabled = !state.invite
-  elements.leaveBtn.disabled = (!joined && !state.localStream) || isBusy
+  elements.inviteBtn.disabled = !onCallView || !state.room
+  elements.leaveBtn.disabled = !hasCallSession || isBusy
   elements.toggleMicBtn.disabled = !localAudioTrack
   elements.toggleCameraBtn.disabled = !localVideoTrack
-  elements.regenerateLinkBtn.disabled = Boolean(state.peerName)
-  elements.shareInviteBtn.disabled = false
-  elements.copyInviteBtn.disabled = false
 
   elements.toggleMicBtn.dataset.active = String(audioEnabled)
   elements.toggleCameraBtn.dataset.active = String(videoEnabled)
@@ -965,9 +1059,16 @@ function updateControls(isBusy = false) {
   elements.leaveBtn.dataset.active = "true"
 
   elements.toggleMicText.textContent = audioEnabled ? "마이크" : "음소거"
-  elements.toggleCameraText.textContent = videoEnabled ? "카메라" : "영상끔"
+  elements.toggleCameraText.textContent = videoEnabled ? "카메라" : "영상 끔"
   elements.toggleMicOff.classList.toggle("hidden", audioEnabled)
   elements.toggleCameraOff.classList.toggle("hidden", videoEnabled)
+}
+
+function setSetupBusy(busy) {
+  elements.createModeBtn.disabled = busy
+  elements.joinModeBtn.disabled = busy
+  elements.createRoomBtn.disabled = busy
+  elements.joinRoomBtn.disabled = busy
 }
 
 function setStatus(message) {
@@ -980,11 +1081,20 @@ function setView(view) {
   elements.setupView.classList.toggle("hidden", view !== "setup")
   elements.callView.classList.toggle("hidden", view !== "call")
   elements.callView.setAttribute("aria-hidden", String(view !== "call"))
+  updateControls()
   syncWaitingModal()
 }
 
+function updateRoomMetaUI() {
+  elements.roomCodeDisplay.textContent = state.room?.code ?? "----"
+  elements.roomPinWrap.classList.toggle("hidden", !state.room?.isPrivate)
+  elements.roomPinDisplay.textContent = state.room?.isPrivate ? state.room.pin || "----" : "----"
+  elements.roomCapacityDisplay.textContent = `최대 인원 ${state.room?.capacity ?? 4}명`
+  updateCallTitle()
+}
+
 function openWaitingModal() {
-  if (!state.invite) {
+  if (!state.room) {
     return
   }
 
@@ -1000,8 +1110,68 @@ function hideWaitingModal({ manual = false } = {}) {
   if (manual) {
     state.waitingModalDismissed = true
   }
-
   elements.waitingModal.classList.add("hidden")
+}
+
+function shouldShowWaitingModal() {
+  return Boolean(state.room) && state.peers.size === 0
+}
+
+function syncWaitingModal(force = false) {
+  const shouldShow =
+    document.body.dataset.view === "call" &&
+    Boolean(state.room) &&
+    (force || (shouldShowWaitingModal() && !state.waitingModalDismissed))
+
+  elements.waitingModal.classList.toggle("hidden", !shouldShow)
+}
+
+async function shareRoomInvite() {
+  if (!state.room) {
+    return
+  }
+
+  const inviteText = [
+    "워키토키 방 초대",
+    `방 키: ${state.room.code}`,
+    `최대 인원: ${state.room.capacity}명`,
+    state.room.isPrivate ? `비밀번호: ${state.room.pin}` : "비밀번호: 없음(공개방)"
+  ].join("\n")
+
+  if (typeof navigator.share === "function") {
+    try {
+      await navigator.share({
+        title: "워키토키 방 초대",
+        text: inviteText
+      })
+      setStatus("초대 전달 창을 열었습니다.")
+      return
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return
+      }
+    }
+  }
+
+  await copyText(inviteText)
+  setStatus("공유 시트를 열 수 없어 초대 정보를 복사했습니다.")
+}
+
+async function copyText(text) {
+  if (!text) {
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const helper = document.createElement("textarea")
+    helper.value = text
+    document.body.append(helper)
+    helper.select()
+    document.execCommand("copy")
+    helper.remove()
+  }
 }
 
 function openConnectionHelpModal() {
@@ -1019,7 +1189,6 @@ function hideConnectionHelpModal() {
 
 function startSocketHeartbeat() {
   stopSocketHeartbeat()
-
   state.lastPongAt = Date.now()
   sendSocketMessage({ type: "ping" })
 
@@ -1030,7 +1199,7 @@ function startSocketHeartbeat() {
 
     const now = Date.now()
     if (now - state.lastPongAt > SOCKET_PONG_TIMEOUT_MS) {
-      setStatus("연결 확인이 지연되어 자동으로 다시 연결합니다.")
+      setStatus("연결 확인이 지연되어 방 연결을 다시 시도합니다.")
       try {
         state.socket.close(4000, "Pong timeout")
       } catch {
@@ -1044,10 +1213,12 @@ function startSocketHeartbeat() {
 }
 
 function stopSocketHeartbeat() {
-  if (state.socketPingTimer) {
-    window.clearInterval(state.socketPingTimer)
-    state.socketPingTimer = null
+  if (!state.socketPingTimer) {
+    return
   }
+
+  window.clearInterval(state.socketPingTimer)
+  state.socketPingTimer = null
 }
 
 function scheduleSignalingReconnect() {
@@ -1055,7 +1226,7 @@ function scheduleSignalingReconnect() {
     return
   }
 
-  if (!state.localStream || !state.roomId || state.socket) {
+  if (!state.localStream || !state.room || state.socket) {
     return
   }
 
@@ -1065,7 +1236,7 @@ function scheduleSignalingReconnect() {
   }
 
   if (state.reconnectAttempts >= MAX_SIGNALING_RECONNECT_ATTEMPTS) {
-    setStatus("연결 복구가 어려워 다시 시도가 필요합니다.")
+    setStatus("방 연결 복구가 어려워졌습니다. 다시 시도 버튼을 눌러 주세요.")
     openConnectionHelpModal()
     return
   }
@@ -1074,21 +1245,22 @@ function scheduleSignalingReconnect() {
   const attempt = state.reconnectAttempts
   const delay = Math.min(SIGNALING_RECONNECT_BASE_DELAY_MS * attempt, 6000)
 
-  setStatus(`세션을 다시 연결하는 중입니다. (${attempt}/${MAX_SIGNALING_RECONNECT_ATTEMPTS})`)
+  setStatus(`방 연결을 복구하는 중입니다. (${attempt}/${MAX_SIGNALING_RECONNECT_ATTEMPTS})`)
 
   state.signalingReconnectTimer = window.setTimeout(async () => {
     state.signalingReconnectTimer = null
 
-    if (state.isResetting || state.isLeaving || !state.localStream || !state.roomId || state.socket) {
+    if (state.isResetting || state.isLeaving || !state.localStream || !state.room || state.socket) {
       return
     }
 
     try {
-      await openSignalingSocket(DEFAULT_DISPLAY_NAME)
-      setStatus("세션을 다시 연결했습니다.")
-
-      if (state.peerConnection && state.peerConnection.connectionState !== "connected") {
-        maybeAutoRepairConnection("reconnected")
+      await openSignalingSocket(state.displayName)
+      setStatus("방 연결을 다시 열었습니다.")
+      for (const peerId of state.peers.keys()) {
+        if (shouldInitiateOffer(peerId)) {
+          void maybeCreateOffer(peerId, { iceRestart: true })
+        }
       }
     } catch {
       scheduleSignalingReconnect()
@@ -1097,79 +1269,35 @@ function scheduleSignalingReconnect() {
 }
 
 function clearSignalingReconnectTimer() {
-  if (state.signalingReconnectTimer) {
-    window.clearTimeout(state.signalingReconnectTimer)
-    state.signalingReconnectTimer = null
-  }
-}
-
-function shouldShowWaitingModal() {
-  return state.shouldShowShareModal && !state.peerName
-}
-
-function syncWaitingModal(force = false) {
-  const shouldShow =
-    document.body.dataset.view === "call" &&
-    Boolean(state.invite) &&
-    (force || (shouldShowWaitingModal() && !state.waitingModalDismissed))
-
-  elements.waitingModal.classList.toggle("hidden", !shouldShow)
-}
-
-function beginIntroRedirect() {
-  clearIntroTimers()
-  state.inviteBootstrapTimer = window.setTimeout(() => {
-    state.inviteBootstrapTimer = null
-    state.invite = createInvite()
-    state.shouldShowShareModal = true
-    state.waitingModalDismissed = false
-    replaceInviteHash(state.invite)
-    renderInvite()
-    setStatus("개인 링크가 준비됐습니다. 3초 뒤 통화 화면으로 전환됩니다.")
-    scheduleAutoEnter(3000)
-  }, 2000)
-}
-
-function scheduleAutoEnter(delay = 1000) {
-  clearAutoEnterTimer()
-  state.autoEnterTimer = window.setTimeout(() => {
-    state.autoEnterTimer = null
-
-    if (
-      state.invite &&
-      !state.socket &&
-      !state.peerConnection &&
-      !state.localStream &&
-      !state.isJoining
-    ) {
-      void joinCall()
-    }
-  }, delay)
-}
-
-function clearAutoEnterTimer() {
-  if (state.autoEnterTimer) {
-    window.clearTimeout(state.autoEnterTimer)
-    state.autoEnterTimer = null
-  }
-}
-
-function clearIntroTimers() {
-  if (state.inviteBootstrapTimer) {
-    window.clearTimeout(state.inviteBootstrapTimer)
-    state.inviteBootstrapTimer = null
+  if (!state.signalingReconnectTimer) {
+    return
   }
 
-  clearAutoEnterTimer()
+  window.clearTimeout(state.signalingReconnectTimer)
+  state.signalingReconnectTimer = null
+}
+
+async function retryCurrentCall() {
+  if (!state.room) {
+    return
+  }
+
+  hideConnectionHelpModal()
+  setStatus("같은 방으로 다시 연결을 시도합니다...")
+  await hardReset({
+    returnToSetup: false,
+    preserveRoom: true
+  })
+  await joinCurrentRoom({ reuseCurrentView: true })
 }
 
 function handleNetworkOnline() {
   state.networkOnline = true
   if (state.localStream) {
-    setStatus("인터넷이 복구되어 연결을 확인하는 중입니다.")
+    setStatus("인터넷이 복구되어 연결을 다시 확인하는 중입니다.")
   }
 
-  if (state.localStream && !state.socket && state.roomId) {
+  if (state.localStream && !state.socket && state.room) {
     scheduleSignalingReconnect()
   }
 
@@ -1180,7 +1308,7 @@ function handleNetworkOnline() {
 
 function handleNetworkOffline() {
   state.networkOnline = false
-  setStatus("인터넷이 끊겼습니다. 다시 연결되면 자동으로 재시도합니다.")
+  setStatus("인터넷 연결이 끊겼습니다. 다시 연결되면 자동으로 재시도합니다.")
 }
 
 function handleVisibilityChange() {
@@ -1216,29 +1344,93 @@ async function releaseWakeLock() {
   try {
     await state.wakeLock.release()
   } catch {
-    // Ignore release errors.
+    // Ignore wake lock release errors.
   } finally {
     state.wakeLock = null
   }
 }
 
-async function retryCurrentCall() {
-  hideConnectionHelpModal()
-  setStatus("같은 링크로 다시 시도합니다...")
-  await hardReset({ returnToSetup: false })
-  await joinCall({ reuseCurrentView: true })
-}
+async function getIceServers() {
+  if (!state.iceServersPromise) {
+    state.iceServersPromise = fetch("/api/ice")
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("ICE 설정을 불러오지 못했습니다.")
+        }
 
-function peerLabel() {
-  if (!state.peerName || state.peerName === DEFAULT_DISPLAY_NAME) {
-    return "상대방"
+        const payload = await response.json()
+        if (!Array.isArray(payload.iceServers) || payload.iceServers.length === 0) {
+          return DEFAULT_ICE_SERVERS
+        }
+        return payload.iceServers
+      })
+      .catch(() => DEFAULT_ICE_SERVERS)
   }
 
-  return state.peerName
+  return state.iceServersPromise
 }
 
-function randomToken(size) {
-  const bytes = new Uint8Array(size)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")
+function stopTracks(stream) {
+  for (const track of stream?.getTracks() ?? []) {
+    track.stop()
+  }
+}
+
+function normalizeMedia(media) {
+  return {
+    audioEnabled: Boolean(media?.audioEnabled),
+    videoEnabled: Boolean(media?.videoEnabled),
+    hasVideo: Boolean(media?.hasVideo)
+  }
+}
+
+function sanitizeName(value) {
+  const trimmed = `${value ?? ""}`.trim()
+  if (!trimmed) {
+    return DEFAULT_DISPLAY_NAME
+  }
+  return trimmed.replace(/\s+/g, " ").slice(0, 24)
+}
+
+function sanitizeClientId(value) {
+  return `${value ?? ""}`.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64)
+}
+
+function readAndPersistDisplayName() {
+  state.displayName = sanitizeName(elements.displayNameInput.value)
+  elements.displayNameInput.value = state.displayName
+  localStorage.setItem(`${STORAGE_PREFIX}.displayName`, state.displayName)
+  return state.displayName
+}
+
+function onlyDigits(value) {
+  return `${value ?? ""}`.replace(/\D/g, "")
+}
+
+function readErrorMessage(error, fallback) {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  return fallback
+}
+
+async function fetchJsonOrThrow(url, init) {
+  const response = await fetch(url, init)
+  const text = await response.text()
+  let payload = {}
+
+  if (text) {
+    try {
+      payload = JSON.parse(text)
+    } catch {
+      payload = {}
+    }
+  }
+
+  if (!response.ok) {
+    const message = typeof payload.message === "string" ? payload.message : "요청 처리에 실패했습니다."
+    throw new Error(message)
+  }
+
+  return payload
 }

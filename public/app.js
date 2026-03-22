@@ -64,8 +64,6 @@ const elements = {
   toggleCameraOff: document.querySelector("#toggleCameraOff"),
   toggleCameraText: document.querySelector("#toggleCameraText"),
   mirrorBtn: document.querySelector("#mirrorBtn"),
-  switchCameraBtn: document.querySelector("#switchCameraBtn"),
-  switchCameraText: document.querySelector("#switchCameraText"),
   leaveBtn: document.querySelector("#leaveBtn"),
   statusText: document.querySelector("#statusText"),
   localStack: document.querySelector(".local-stack"),
@@ -98,8 +96,6 @@ const state = {
   localStream: null,
   microphoneTrack: null,
   cameraTrack: null,
-  preferredFacingMode: "user",
-  currentVideoDeviceId: "",
   peers: new Map(),
   isJoining: false,
   isLeaving: false,
@@ -171,9 +167,6 @@ function bindEvents() {
   elements.toggleMicBtn.addEventListener("click", toggleMicrophone)
   elements.toggleCameraBtn.addEventListener("click", toggleCamera)
   elements.mirrorBtn.addEventListener("click", toggleMirror)
-  elements.switchCameraBtn.addEventListener("click", () => {
-    void switchCameraFacing()
-  })
   elements.leaveBtn.addEventListener("click", () => {
     void leaveCall()
   })
@@ -529,6 +522,7 @@ async function joinRoomById(roomId, pin = "", options = {}) {
       showLobby(message)
     } else {
       setStatus(message)
+      void refreshLobbyRooms()
     }
   } finally {
     setSetupBusy(false)
@@ -607,8 +601,6 @@ async function prepareLocalMedia() {
 
   state.microphoneTrack = stream.getAudioTracks()[0] ?? null
   state.cameraTrack = stream.getVideoTracks()[0] ?? null
-  state.currentVideoDeviceId = state.cameraTrack?.getSettings?.().deviceId ?? ""
-  state.preferredFacingMode = state.cameraTrack?.getSettings?.().facingMode ?? "user"
   applyActiveLocalStream()
 }
 
@@ -653,8 +645,6 @@ function stopLocalCaptureTracks() {
   state.localStream = null
   state.microphoneTrack = null
   state.cameraTrack = null
-  state.currentVideoDeviceId = ""
-  state.preferredFacingMode = "user"
 }
 
 function openSignalingSocket() {
@@ -1388,70 +1378,6 @@ function toggleMirror() {
   updateControls()
 }
 
-async function switchCameraFacing() {
-  if (!state.cameraTrack || !navigator.mediaDevices?.getUserMedia) {
-    setStatus("카메라가 없어서 화면 전환을 할 수 없습니다.")
-    return
-  }
-
-  const currentTrack = state.cameraTrack
-  const previousEnabled = currentTrack.enabled
-  const nextMode = state.preferredFacingMode === "environment" ? "user" : "environment"
-
-  try {
-    const nextTrack = await acquireReplacementCameraTrack(nextMode)
-    if (!nextTrack) {
-      setStatus("다른 카메라를 찾지 못했습니다.")
-      return
-    }
-
-    nextTrack.enabled = previousEnabled
-    state.cameraTrack = nextTrack
-    state.currentVideoDeviceId = nextTrack.getSettings?.().deviceId ?? state.currentVideoDeviceId
-    state.preferredFacingMode = nextTrack.getSettings?.().facingMode ?? nextMode
-    applyActiveLocalStream()
-    await syncPeerSenders()
-    sendPresence()
-    currentTrack.stop()
-    setStatus(state.preferredFacingMode === "environment" ? "후면 카메라로 전환했습니다." : "전면 카메라로 전환했습니다.")
-  } catch {
-    setStatus("카메라 전환을 할 수 없습니다.")
-  }
-}
-
-async function acquireReplacementCameraTrack(nextMode) {
-  const videoInputs = await navigator.mediaDevices.enumerateDevices().catch(() => [])
-  const cameras = videoInputs.filter((device) => device.kind === "videoinput")
-  const currentDeviceId = state.currentVideoDeviceId || state.cameraTrack?.getSettings?.().deviceId || ""
-
-  const currentIndex = cameras.findIndex((device) => device.deviceId === currentDeviceId)
-  const nextDevice =
-    cameras.length > 1 && currentIndex >= 0
-      ? cameras[(currentIndex + 1) % cameras.length]
-      : null
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: {
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      ...(nextDevice
-        ? {
-            deviceId: {
-              exact: nextDevice.deviceId
-            }
-          }
-        : {
-            facingMode: {
-              ideal: nextMode
-            }
-          })
-    }
-  })
-
-  return stream.getVideoTracks()[0] ?? null
-}
-
 async function leaveCall() {
   state.isLeaving = true
   clearSignalingReconnectTimer()
@@ -1552,13 +1478,11 @@ function updateControls(isBusy = false) {
   elements.leaveBtn.disabled = !hasCallSession || isBusy
   elements.toggleMicBtn.disabled = !localAudioTrack
   elements.toggleCameraBtn.disabled = !localVideoTrack
-  elements.mirrorBtn.disabled = !localVideoTrack
-  elements.switchCameraBtn.disabled = !onCallView || !localVideoTrack || isBusy
+  elements.mirrorBtn.disabled = !onCallView || !localVideoTrack || isBusy
 
   elements.toggleMicBtn.dataset.active = String(audioEnabled)
   elements.toggleCameraBtn.dataset.active = String(videoEnabled)
   elements.mirrorBtn.dataset.active = String(state.isMirrored)
-  elements.switchCameraBtn.dataset.active = "true"
   elements.chatBtn.dataset.active = "true"
   elements.doodleBtn.dataset.active = String(state.isDoodleMode)
   elements.inviteBtn.dataset.active = "true"
@@ -1566,7 +1490,6 @@ function updateControls(isBusy = false) {
 
   elements.toggleMicText.textContent = audioEnabled ? "마이크" : "음소거"
   elements.toggleCameraText.textContent = videoEnabled ? "카메라" : "영상 끔"
-  elements.switchCameraText.textContent = "카메라 전환"
   elements.toggleMicOff.classList.toggle("hidden", audioEnabled)
   elements.toggleCameraOff.classList.toggle("hidden", videoEnabled)
 }

@@ -3,11 +3,13 @@ import { DurableObject } from "cloudflare:workers"
 const WS_PATH = /^\/api\/rooms\/([a-z0-9-]{6,32})\/ws$/
 const JOIN_PATH = /^\/api\/rooms\/([a-z0-9-]{6,32})\/join$/
 const ROOM_ID_REGEX = /^[a-z0-9-]{6,32}$/
+const LOBBY_ROOM_ID_REGEX = /^\d{6}$/
 const PIN_REGEX = /^[0-9]{4}$/
 const ALLOWED_CAPACITIES = new Set([4, 6, 8])
 const ROOM_META_KEY = "room_meta"
 const LOBBY_ROOMS_KEY = "rooms"
 const ROOM_IDLE_TTL_MS = 1000 * 60 * 20
+const LOBBY_ACTIVE_TTL_MS = 1000 * 45
 
 export default {
   async fetch(request, env) {
@@ -159,6 +161,18 @@ async function joinRoom(request, env, roomId) {
   })
 
   if (!response.ok) {
+    if (response.status === 404) {
+      await dispatchToLobby(env, "/remove", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          roomId
+        })
+      })
+    }
+
     const errorPayload = await parseResponseJson(response)
     return json(
       {
@@ -450,6 +464,7 @@ export class SignalingRoom extends DurableObject {
         })
         break
       case "ping":
+        this.ctx.waitUntil(this.syncLobbySummary())
         this.send(ws, { type: "pong" })
         break
       default:
@@ -695,7 +710,7 @@ export class LobbyRegistry extends DurableObject {
     const rooms = Object.values(roomsMap)
       .map((room) => sanitizeLobbySummary(room))
       .filter((room) => room != null)
-      .filter((room) => Date.now() - room.updatedAt < ROOM_IDLE_TTL_MS)
+      .filter((room) => Date.now() - room.updatedAt < LOBBY_ACTIVE_TTL_MS)
       .filter((room) => room.participants > 0 && room.participants < room.capacity)
       .sort((left, right) => right.updatedAt - left.updatedAt)
 
@@ -906,7 +921,7 @@ function sanitizeLobbySummary(value) {
   const participants = Math.max(0, Math.min(Number(value?.participants ?? 0), capacity))
   const updatedAt = Number(value?.updatedAt ?? Date.now())
 
-  if (!roomId || !roomTitle) {
+  if (!roomId || !roomTitle || !LOBBY_ROOM_ID_REGEX.test(roomId)) {
     return null
   }
 

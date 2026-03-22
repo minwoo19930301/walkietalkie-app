@@ -1,7 +1,7 @@
 # 워키토키
 
 브라우저만으로 바로 들어와서 통화하는 WebRTC 기반 영상·음성 채팅 앱입니다.  
-처음 접속하면 `랜덤 방 이름`으로 빠른 방을 자동 생성하고, 종료 후에는 대기실에서 현재 기다리는 방 목록을 보고 바로 들어갈 수 있습니다.
+처음 접속하면 `랜덤 방 번호`로 빠른 방을 자동 생성하고, 종료 후에는 대기실에서 현재 기다리는 방 목록을 보고 바로 들어갈 수 있습니다.
 
 ## 링크
 
@@ -10,14 +10,20 @@
 - 이전 계정 주소: [https://walkietalkie.rlaalsdn456456.workers.dev/](https://walkietalkie.rlaalsdn456456.workers.dev/)
 - 초기 paircall 주소: [https://paircall.rlaalsdn456456.workers.dev/](https://paircall.rlaalsdn456456.workers.dev/)
 
+## 다른 GitHub Pages
+
+- tour-schedular: [https://minwoo19930301.github.io/tour-schedular/](https://minwoo19930301.github.io/tour-schedular/)
+- trip-plans: [https://minwoo19930301.github.io/trip-plans/paris_trip.html](https://minwoo19930301.github.io/trip-plans/paris_trip.html)
+- invitation: [https://minwoo19930301.github.io/invitation/](https://minwoo19930301.github.io/invitation/)
+
 ## 현재 기능
 
 - 첫 진입 시 공개 4인 `빠른 방` 자동 생성
-- 랜덤 방 이름 예시: `AMBER-4821`
+- 랜덤 방 번호 예시: `482193`
 - 비공개방: 비밀번호 숫자 4자리
 - 최대 인원 선택: 4명 / 6명 / 8명
 - 종료 후 대기실에서 `현재 대기 중인 방 목록` 확인
-- 초대 모달에서 `방 이름 - 비밀번호` 형태 확인 + 초대 링크 전달(Web Share)
+- 초대 모달에서 `방 번호 - 비밀번호` 형태 확인 + 초대 링크 전달(Web Share)
 - 마이크/카메라/좌우 반전/화면 공유/종료 버튼이 있는 모바일 통화 화면
 - 임시 채팅 말풍선: 전송 후 약 3초 표시
 - 낙서 오버레이: 실시간 공유되고 3초 무입력 시 자동 삭제

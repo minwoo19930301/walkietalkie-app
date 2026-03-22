@@ -9,33 +9,6 @@ const ROOM_META_KEY = "room_meta"
 const LOBBY_ROOMS_KEY = "rooms"
 const ROOM_IDLE_TTL_MS = 1000 * 60 * 20
 
-const ROOM_WORDS = [
-  "amber",
-  "breeze",
-  "cocoa",
-  "coral",
-  "daisy",
-  "drift",
-  "echo",
-  "ember",
-  "glow",
-  "hazel",
-  "honey",
-  "linen",
-  "luna",
-  "mango",
-  "mint",
-  "mocha",
-  "olive",
-  "pearl",
-  "poppy",
-  "river",
-  "satin",
-  "sunny",
-  "velvet",
-  "willow"
-]
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
@@ -160,7 +133,7 @@ async function createRoom(request, env) {
 
   return json(
     {
-      message: "사용 가능한 랜덤 방 이름을 만들지 못했습니다. 잠시 후 다시 시도해 주세요."
+      message: "사용 가능한 방 번호를 만들지 못했습니다. 잠시 후 다시 시도해 주세요."
     },
     { status: 503 }
   )
@@ -626,7 +599,7 @@ export class SignalingRoom extends DurableObject {
     const roomFromSocket = sessions[0]?.meta
     const room = this.room ?? {
       roomId: roomFromSocket?.roomId ?? "",
-      roomTitle: roomFromSocket?.roomTitle ?? "WALKIETALKIE-0000",
+      roomTitle: roomFromSocket?.roomTitle ?? "000000",
       capacity: sanitizeCapacity(roomFromSocket?.capacity),
       isPrivate: Boolean(roomFromSocket?.isPrivate)
     }
@@ -957,12 +930,11 @@ function publicRoomMeta(room) {
 }
 
 function generateRoomIdentity() {
-  const word = ROOM_WORDS[randomInt(ROOM_WORDS.length)]
-  const digits = randomDigits(4)
+  const digits = randomDigits(6)
 
   return {
-    roomId: `${word}-${digits}`,
-    roomTitle: `${word.toUpperCase()}-${digits}`
+    roomId: digits,
+    roomTitle: digits
   }
 }
 
@@ -970,12 +942,6 @@ function randomDigits(length) {
   const bytes = new Uint8Array(length)
   crypto.getRandomValues(bytes)
   return Array.from(bytes, (value) => String(value % 10)).join("")
-}
-
-function randomInt(max) {
-  const bytes = new Uint32Array(1)
-  crypto.getRandomValues(bytes)
-  return bytes[0] % max
 }
 
 async function parseRequestJson(request) {

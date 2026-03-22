@@ -653,25 +653,6 @@ select:disabled {
   word-break: break-word;
 }
 
-.mirror-btn {
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: #fff8f4;
-  background: rgba(14, 11, 23, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.24);
-}
-
-.mirror-btn[data-active="false"] {
-  opacity: 0.7;
-}
-
 .control-dock {
   left: 50%;
   transform: translateX(-50%);
@@ -755,13 +736,16 @@ select:disabled {
 }
 
 .hangup-icon {
-  inline-size: 26px;
-  block-size: 26px;
+  inline-size: 24px;
+  block-size: 24px;
+  stroke-width: 3.3;
 }
 
 .hangup-icon path {
-  fill: currentColor;
-  stroke: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .icon-text {

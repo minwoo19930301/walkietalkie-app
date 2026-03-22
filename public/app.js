@@ -1,5 +1,5 @@
 const DEFAULT_DISPLAY_NAME = "참여자"
-const ROOM_ID_REGEX = /^\d{6}$/
+const ROOM_ID_REGEX = /^[a-z0-9-]{6,32}$/
 const PIN_REGEX = /^\d{4}$/
 const DEFAULT_ROOM_CAPACITY = 8
 

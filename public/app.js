@@ -1545,7 +1545,6 @@ function updateControls(isBusy = false) {
   const audioEnabled = Boolean(localAudioTrack?.enabled)
   const videoEnabled = Boolean(localVideoTrack?.enabled)
   const onCallView = document.body.dataset.view === "call"
-  const supportsScreenShare = Boolean(navigator.mediaDevices?.getDisplayMedia)
 
   elements.inviteBtn.disabled = !onCallView || !state.room
   elements.chatBtn.disabled = !onCallView || !hasSocket
@@ -1554,26 +1553,20 @@ function updateControls(isBusy = false) {
   elements.toggleMicBtn.disabled = !localAudioTrack
   elements.toggleCameraBtn.disabled = !localVideoTrack
   elements.mirrorBtn.disabled = !localVideoTrack
-  elements.shareScreenBtn.disabled = !onCallView || !hasSocket || !supportsScreenShare
+  elements.switchCameraBtn.disabled = !onCallView || !localVideoTrack || isBusy
 
   elements.toggleMicBtn.dataset.active = String(audioEnabled)
   elements.toggleCameraBtn.dataset.active = String(videoEnabled)
   elements.mirrorBtn.dataset.active = String(state.isMirrored)
-  elements.shareScreenBtn.dataset.active = String(state.isScreenSharing)
+  elements.switchCameraBtn.dataset.active = "true"
   elements.chatBtn.dataset.active = "true"
   elements.doodleBtn.dataset.active = String(state.isDoodleMode)
   elements.inviteBtn.dataset.active = "true"
   elements.leaveBtn.dataset.active = "true"
 
   elements.toggleMicText.textContent = audioEnabled ? "마이크" : "음소거"
-  elements.toggleCameraText.textContent = state.isScreenSharing
-    ? videoEnabled
-      ? "화면"
-      : "화면 끔"
-    : videoEnabled
-      ? "카메라"
-      : "영상 끔"
-  elements.shareScreenText.textContent = state.isScreenSharing ? "공유 중" : "화면 공유"
+  elements.toggleCameraText.textContent = videoEnabled ? "카메라" : "영상 끔"
+  elements.switchCameraText.textContent = "카메라 전환"
   elements.toggleMicOff.classList.toggle("hidden", audioEnabled)
   elements.toggleCameraOff.classList.toggle("hidden", videoEnabled)
 }
@@ -1582,7 +1575,6 @@ function setSetupBusy(busy) {
   elements.openLobbyBtn.disabled = busy
   elements.refreshLobbyBtn.disabled = busy
   elements.isPrivateCheck.disabled = busy
-  elements.capacitySelect.disabled = busy
   elements.createPinInput.disabled = busy
   elements.createRoomBtn.disabled = busy
   elements.privateJoinSubmitBtn.disabled = busy

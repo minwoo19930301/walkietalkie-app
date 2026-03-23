@@ -6,6 +6,15 @@ const DEFAULT_ROOM_CAPACITY = 8
 const DEFAULT_ICE_SERVERS = [
   {
     urls: "stun:stun.cloudflare.com:3478"
+  },
+  {
+    urls: "stun:stun.l.google.com:19302"
+  },
+  {
+    urls: "stun:stun1.l.google.com:19302"
+  },
+  {
+    urls: "stun:stun2.l.google.com:19302"
   }
 ]
 
@@ -966,10 +975,17 @@ async function ensurePeerConnection(peerId, peerName = "") {
     peer.connectionState = connection.connectionState
 
     if (peer.connectionState === "connected") {
+      peer.iceRestartAttempts = 0
       hideConnectionHelpModal()
     } else if (peer.connectionState === "failed") {
-      openConnectionHelpModal()
-      setStatus("직접 연결이 어려워 보입니다. 연결 가이드를 확인해 주세요.")
+      if (peer.iceRestartAttempts < 1 && state.socket?.readyState === WebSocket.OPEN) {
+        peer.iceRestartAttempts += 1
+        setStatus("영상 연결을 다시 맞추는 중입니다...")
+        void maybeCreateOffer(peerId, { iceRestart: true })
+      } else {
+        openConnectionHelpModal()
+        setStatus("영상 연결이 어려워 보입니다. 다시 시도해 주세요.")
+      }
     }
 
     updatePeerTile(peer)
@@ -1006,6 +1022,7 @@ function createPeerState(peerId, peerName) {
     connection: null,
     connectionState: "new",
     pendingCandidates: [],
+    iceRestartAttempts: 0,
     offerInFlight: false,
     tile,
     videoEl,

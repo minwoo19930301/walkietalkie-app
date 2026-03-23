@@ -736,16 +736,13 @@ select:disabled {
 }
 
 .hangup-icon {
-  inline-size: 24px;
-  block-size: 24px;
-  stroke-width: 3.3;
+  inline-size: 22px;
+  block-size: 22px;
 }
 
 .hangup-icon path {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: currentColor;
+  stroke: none;
 }
 
 .icon-text {

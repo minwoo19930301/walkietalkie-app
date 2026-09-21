@@ -10,12 +10,6 @@
 - 이전 계정 주소: [https://walkietalkie.rlaalsdn456456.workers.dev/](https://walkietalkie.rlaalsdn456456.workers.dev/)
 - 초기 paircall 주소: [https://paircall.rlaalsdn456456.workers.dev/](https://paircall.rlaalsdn456456.workers.dev/)
 
-## 다른 GitHub Pages
-
-- tour-schedular: [https://minwoo19930301.github.io/tour-schedular/](https://minwoo19930301.github.io/tour-schedular/)
-- trip-plans: [https://minwoo19930301.github.io/trip-plans/paris_trip.html](https://minwoo19930301.github.io/trip-plans/paris_trip.html)
-- invitation: [https://minwoo19930301.github.io/invitation/](https://minwoo19930301.github.io/invitation/)
-
 ## 현재 기능
 
 - 첫 진입 시 공개 4인 `빠른 방` 자동 생성

@@ -1,7 +1,12 @@
 # 워키토키
 
+[![워키토키](public/images/video-call.jpg)](https://walkietalkie.kmw4564.workers.dev/)
+
+[![OPEN APP](https://img.shields.io/badge/OPEN_APP-294a38?style=for-the-badge)](https://walkietalkie.kmw4564.workers.dev/) [![SOURCE](https://img.shields.io/badge/SOURCE-444444?style=for-the-badge)](https://github.com/minwoo19930301/walkietalkie-app)
+
+
 브라우저만으로 바로 들어와서 통화하는 WebRTC 기반 영상·음성 채팅 앱입니다.  
-처음 접속하면 `랜덤 방 번호`로 빠른 방을 자동 생성하고, 종료 후에는 대기실에서 현재 기다리는 방 목록을 보고 바로 들어갈 수 있습니다.
+첫 화면에서 통화방을 만들거나 대기 중인 방에 참여할 수 있습니다. 초대 링크로 접속하면 해당 방으로 바로 연결됩니다.
 
 ## 링크
 
@@ -67,3 +72,7 @@ npm run deploy
 ```bash
 npm run check
 ```
+
+## 사진 출처
+
+랜딩 사진: [Anna Shvets / Pexels](https://www.pexels.com/photo/people-on-a-video-call-4226140/). [Pexels License](https://www.pexels.com/license/)에 따라 상업적 웹사이트 사용이 허용됩니다. 사진은 화상회의 상황을 보여주는 스톡 이미지이며 실제 서비스 화면은 아닙니다.

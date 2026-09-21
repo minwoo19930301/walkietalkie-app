@@ -243,19 +243,7 @@ function bootstrap() {
 }
 
 function beginQuickStartFlow() {
-  clearQuickStartTimer()
-  setSetupStage("intro")
-  setView("setup")
-  setStatus("랜덤 방을 자동으로 준비하는 중입니다.")
-
-  state.quickStartTimer = window.setTimeout(() => {
-    state.quickStartTimer = null
-    void createRoom({
-      capacity: DEFAULT_ROOM_CAPACITY,
-      isPrivate: false,
-      pin: ""
-    })
-  }, 1000)
+  showLobby("방을 만들고 초대 링크를 보내세요.")
 }
 
 function beginSharedRoomEntry(sharedRoom) {

@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#14131f" />
+    <meta name="theme-color" content="#f5f4ef" />
     <title>워키토키</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -16,30 +16,20 @@
         <div class="setup-stack">
           <article class="stack-card hero-card">
             <div class="hero-grid">
+              <img class="meeting-photo" src="/images/video-call.jpg" alt="노트북으로 화상회의에 참여하는 사람들" width="1600" height="1067" fetchpriority="high" />
               <div class="hero-copybox">
-                <p class="eyebrow">WalkieTalkie make by a Computer Illiterate</p>
-                <h1>컴맹이 만든<br />워키토키</h1>
+                <p class="eyebrow">WALKIETALKIE / 워키토키</p>
+                <h1>링크로 주고받는<br />24시간 무료 화상통화</h1>
                 <p class="hero-copy">
-                  처음 들어오면 랜덤 방 번호로 바로 방을 준비합니다. 통화를 끊은 뒤에는
-                  대기실에서 현재 기다리는 방들을 보고 바로 들어갈 수 있습니다.
+                  링크를 공유해서 최대 4명과 대화할 수 있어요.
                 </p>
               </div>
 
-              <div class="hero-art" aria-hidden="true">
-                <span class="signal-ring ring-1"></span>
-                <span class="signal-ring ring-2"></span>
-                <span class="signal-ring ring-3"></span>
-                <span class="signal-core"></span>
-              </div>
+
             </div>
 
             <div class="intro-panel" id="introPanel">
-              <div class="intro-pulse" aria-hidden="true">
-                <span class="intro-pulse-ring ring-a"></span>
-                <span class="intro-pulse-ring ring-b"></span>
-                <span class="intro-pulse-core"></span>
-              </div>
-              <p class="intro-lead">랜덤 방을 자동으로 준비하고 있습니다.</p>
+              <p class="intro-lead">통화방에 연결하고 있어요.</p>
               <p class="intro-note">
                 초대받은 사람은 전달받은 링크를 누르면 바로 같은 방으로 들어옵니다.
               </p>
@@ -51,13 +41,19 @@
             <div class="lobby-panel hidden" id="lobbyPanel">
               <div class="lobby-head">
                 <div>
-                  <p class="lobby-kicker">대기실</p>
+                  
                   <h2>대기 중인 방</h2>
                 </div>
                 <button id="refreshLobbyBtn" class="secondary-btn mini-btn" type="button">
                   새로고침
                 </button>
               </div>
+
+
+
+              <section class="waiting-rooms-panel">
+                <div id="waitingRoomList" class="waiting-room-list"></div>
+              </section>
 
               <form id="createForm" class="room-form">
                 <label class="check-field">
@@ -79,17 +75,13 @@
                 </div>
 
                 <button id="createRoomBtn" class="primary-btn" type="submit">
-                  새 랜덤 방 만들기
+                  새 통화방 만들기 →
                 </button>
               </form>
-
-              <section class="waiting-rooms-panel">
-                <div id="waitingRoomList" class="waiting-room-list"></div>
-              </section>
             </div>
 
-            <p class="setup-status" id="setupStatusText">
-              처음에는 빠른 방으로 바로 들어가고, 통화 종료 후 여기서 다시 시작할 수 있습니다.
+            <p class="setup-status" role="status" aria-live="polite" id="setupStatusText">
+              방을 만든 뒤 초대 링크를 공유하세요.
             </p>
           </article>
         </div>

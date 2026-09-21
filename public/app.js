@@ -1,7 +1,7 @@
 const DEFAULT_DISPLAY_NAME = "참여자"
 const ROOM_ID_REGEX = /^[a-z0-9-]{6,32}$/
 const PIN_REGEX = /^\d{4}$/
-const DEFAULT_ROOM_CAPACITY = 8
+const DEFAULT_ROOM_CAPACITY = 4
 
 const DEFAULT_ICE_SERVERS = [
   {
@@ -139,6 +139,10 @@ bindEvents()
 bootstrap()
 
 function bindEvents() {
+  document.querySelector("#resumeMediaBtn").addEventListener("click", () => {
+    document.querySelector("#resumeMediaBtn").classList.add("hidden")
+    for (const peer of state.peers.values()) resumePeerVideo(peer)
+  })
   elements.layoutSelect.addEventListener("change", () => {
     renderRemoteStageState()
     resizeDoodleCanvas()
@@ -827,6 +831,11 @@ async function handleRoomState(message) {
   }
 }
 
+function sanitizeCapacityValue(value) {
+  const parsed = Number(value)
+  return [4, 6, 8].includes(parsed) ? parsed : DEFAULT_ROOM_CAPACITY
+}
+
 function mergeRoomMeta(roomMeta) {
   if (!roomMeta || !state.room) {
     return
@@ -935,6 +944,7 @@ async function ensurePeerConnection(peerId, peerName = "") {
   peer.connectionState = connection.connectionState
   peer.stream ??= new MediaStream()
   peer.videoEl.srcObject = peer.stream
+  resumePeerVideo(peer)
 
   addLocalTracksToConnection(connection)
 
@@ -962,6 +972,7 @@ async function ensurePeerConnection(peerId, peerName = "") {
     }
 
     peer.videoEl.srcObject = peer.stream
+  resumePeerVideo(peer)
     if (remoteStream.getVideoTracks().length > 0) {
       peer.media.hasVideo = true
       peer.media.videoEnabled = true
@@ -1231,6 +1242,12 @@ function updatePeerTile(peer) {
       peer.placeholderEl.innerHTML = "<strong>연결 중</strong><span>상대 화면 준비 중</span>"
     }
   }
+}
+
+function resumePeerVideo(peer) {
+  peer.videoEl.play().catch(() => {
+    document.querySelector("#resumeMediaBtn").classList.remove("hidden")
+  })
 }
 
 function shouldUseStageLocalTile() {

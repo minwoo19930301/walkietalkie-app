@@ -89,6 +89,11 @@
 
       <section class="view call-view hidden" id="callView" aria-hidden="true">
         <div class="call-stage" id="callStage">
+          <header class="call-toolbar">
+            <span class="call-brand">워키토키</span>
+            <label>배치 <select id="layoutSelect" aria-label="참가자 화면 배치"><option value="auto">자동</option><option value="focus">상대방 크게</option><option value="horizontal">가로 나란히</option><option value="vertical">세로 나란히</option><option value="grid">격자</option></select></label>
+            <label>영상 <select id="fitSelect" aria-label="영상 비율"><option value="contain">원본 비율</option><option value="cover">화면 채우기</option></select></label>
+          </header>
           <div id="remoteGrid" class="remote-grid"></div>
           <article id="localStageTile" class="peer-tile local-stage-tile hidden" aria-hidden="true">
             <video id="localStageVideo" class="call-video hidden" playsinline autoplay muted></video>
@@ -120,15 +125,7 @@
             </aside>
           </div>
 
-          <div class="control-dock">
-            <button id="inviteBtn" class="icon-button" type="button" aria-label="초대 보기">
-              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 15V5" />
-                <path d="m8 9 4-4 4 4" />
-                <path d="M5.5 14.5v2A2.5 2.5 0 0 0 8 19h8a2.5 2.5 0 0 0 2.5-2.5v-2" />
-              </svg>
-              <span class="icon-text">초대</span>
-            </button>
+          <nav class="collaboration-tools" aria-label="대화 도구">
             <button id="chatBtn" class="icon-button" type="button" aria-label="임시 채팅">
               <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M6.5 7.5A2.5 2.5 0 0 1 9 5h6a2.5 2.5 0 0 1 2.5 2.5v4A2.5 2.5 0 0 1 15 14H11l-3.5 3v-3H9A2.5 2.5 0 0 1 6.5 11.5v-4Z" />
@@ -141,6 +138,13 @@
                 <path d="M13 9l2 2" />
               </svg>
               <span class="icon-text">낙서</span>
+            </button>
+          </nav>
+
+          <div class="control-dock">
+            <button id="inviteBtn" class="icon-button" type="button" aria-label="초대 링크 공유">
+              <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="5" r="3"/><circle cx="18" cy="19" r="3"/><path d="m9 10 6-4M9 14l6 4"/></svg>
+              <span class="icon-text">링크 공유</span>
             </button>
             <button id="toggleMicBtn" class="icon-button" type="button" disabled aria-label="마이크">
               <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">

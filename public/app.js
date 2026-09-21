@@ -27,6 +27,8 @@ const clientId = sessionStorage.getItem("walkietalkie.clientId") ?? `wt-${crypto
 sessionStorage.setItem("walkietalkie.clientId", clientId)
 
 const elements = {
+  layoutSelect: document.querySelector("#layoutSelect"),
+  fitSelect: document.querySelector("#fitSelect"),
   setupView: document.querySelector("#setupView"),
   callView: document.querySelector("#callView"),
   callStage: document.querySelector("#callStage"),
@@ -137,6 +139,14 @@ bindEvents()
 bootstrap()
 
 function bindEvents() {
+  elements.layoutSelect.addEventListener("change", () => {
+    renderRemoteStageState()
+    resizeDoodleCanvas()
+  })
+  elements.fitSelect.addEventListener("change", () => {
+    elements.callStage.dataset.fit = elements.fitSelect.value
+  })
+  window.addEventListener("resize", () => renderRemoteStageState())
   elements.openLobbyBtn.addEventListener("click", () => {
     showLobby("대기실에서 현재 기다리는 방을 볼 수 있습니다.")
   })
@@ -1202,7 +1212,7 @@ function removePeer(peerId) {
 function renderRemoteStageState() {
   const hasPeers = state.peers.size > 0
   syncParticipantGrid()
-  elements.emptyStage.classList.toggle("hidden", hasPeers)
+  elements.emptyStage.classList.toggle("hidden", hasPeers || shouldUseStageLocalTile())
   elements.remoteGrid.classList.toggle("hidden", getVisibleGridTileCount() === 0)
   renderLocalPreviewState()
   updateCallTitle()
@@ -1224,7 +1234,7 @@ function updatePeerTile(peer) {
 }
 
 function shouldUseStageLocalTile() {
-  return state.peers.size + 1 >= 4
+  return elements.layoutSelect.value !== "focus"
 }
 
 function getVisibleGridTileCount() {
@@ -1244,6 +1254,17 @@ function getGridColumns(tileCount) {
 }
 
 function syncParticipantGrid() {
+  const count = state.peers.size + 1
+  const mode = elements.layoutSelect.value
+  let columns = 1
+  if (mode === "horizontal") columns = count
+  else if (mode === "grid") columns = Math.min(count, 2)
+  else if (mode === "auto") columns = window.innerWidth >= 700 || count >= 3 ? Math.min(count, 2) : 1
+  else if (mode === "focus") columns = state.peers.size >= 2 ? 2 : 1
+  elements.remoteGrid.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`
+  elements.remoteGrid.style.gridTemplateRows = `repeat(${Math.ceil((mode === "focus" ? Math.max(1, state.peers.size) : count) / columns)}, minmax(0, 1fr))`
+  elements.callStage.dataset.layout = mode
+  elements.callStage.dataset.fit = elements.fitSelect.value
   const peerTiles = Array.from(state.peers.values()).map((peer) => peer.tile)
 
   if (!shouldUseStageLocalTile()) {
@@ -1252,8 +1273,7 @@ function syncParticipantGrid() {
     return
   }
 
-  const columns = getGridColumns(peerTiles.length + 1)
-  const localIndex = Math.max(0, columns - 1)
+  const localIndex = peerTiles.length
   const orderedTiles = [
     ...peerTiles.slice(0, localIndex),
     elements.localStageTile,

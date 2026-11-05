@@ -23,6 +23,16 @@ const STUN_ICE_SERVERS = [
 // TURN_KEY_API_TOKEN secrets the app falls back to STUN only.
 const TURN_CREDENTIAL_TTL_SECONDS = 60 * 60 * 4
 
+function timingSafeEqualString(a, b) {
+  const left = new TextEncoder().encode(a)
+  const right = new TextEncoder().encode(b)
+  let diff = left.length ^ right.length
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    diff |= (left[i] ?? 0) ^ (right[i] ?? 0)
+  }
+  return diff === 0
+}
+
 async function fetchTurnIceServers(env) {
   if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) {
     return []
@@ -66,10 +76,27 @@ export default {
     const url = new URL(request.url)
 
     if (url.pathname === "/api/ice") {
+      // Default: direct connections only. TURN relay costs money, so it is
+      // handed out only through /api/ice/relay with the relay PIN.
+      return json({ iceServers: STUN_ICE_SERVERS })
+    }
+
+    if (url.pathname === "/api/ice/relay") {
+      if (request.method !== "POST") {
+        return json({ message: "Method not allowed." }, { status: 405 })
+      }
+      const body = await request.json().catch(() => ({}))
+      const pin = typeof body.pin === "string" ? body.pin : ""
+      if (!env.TURN_PIN || !timingSafeEqualString(pin, env.TURN_PIN)) {
+        // Slow down guessing of the 4-digit PIN.
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        return json({ message: "비밀번호가 맞지 않습니다." }, { status: 403 })
+      }
       const turn = await fetchTurnIceServers(env)
-      return json({
-        iceServers: [...turn, ...STUN_ICE_SERVERS]
-      })
+      if (turn.length === 0) {
+        return json({ message: "중계 서버를 준비하지 못했습니다." }, { status: 503 })
+      }
+      return json({ iceServers: [...turn, ...STUN_ICE_SERVERS] })
     }
 
     if (url.pathname === "/api/lobby") {

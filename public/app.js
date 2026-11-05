@@ -51,6 +51,10 @@ const elements = {
   closeConnectionHelpBtn: document.querySelector("#closeConnectionHelpBtn"),
   dismissConnectionHelpBtn: document.querySelector("#dismissConnectionHelpBtn"),
   retryConnectionBtn: document.querySelector("#retryConnectionBtn"),
+  relayForm: document.querySelector("#relayForm"),
+  relayPinInput: document.querySelector("#relayPinInput"),
+  enableRelayBtn: document.querySelector("#enableRelayBtn"),
+  relayError: document.querySelector("#relayError"),
   privateJoinForm: document.querySelector("#privateJoinForm"),
   privateJoinPinInput: document.querySelector("#privateJoinPinInput"),
   privateJoinMetaText: document.querySelector("#privateJoinMetaText"),
@@ -122,6 +126,7 @@ const state = {
   },
   iceServersPromise: null,
   iceServersFetchedAt: 0,
+  relayPin: "",
   socketPingTimer: null,
   signalingReconnectTimer: null,
   reconnectAttempts: 0,
@@ -187,6 +192,10 @@ function bindEvents() {
   elements.dismissConnectionHelpBtn.addEventListener("click", closeConnectionHelpModal)
   elements.retryConnectionBtn.addEventListener("click", () => {
     void retryCurrentCall()
+  })
+  elements.relayForm.addEventListener("submit", (event) => {
+    event.preventDefault()
+    void enableRelay(elements.relayPinInput.value.trim())
   })
   elements.toggleMicBtn.addEventListener("click", toggleMicrophone)
   elements.toggleCameraBtn.addEventListener("click", toggleCamera)
@@ -1350,8 +1359,8 @@ function renderLocalPreviewState() {
 
 function updateCallTitle() {
   document.title = state.room?.title
-    ? `${state.room.title} | 워키토키`
-    : "워키토키"
+    ? `${state.room.title} | 온라인 무료 통화`
+    : "온라인 무료 통화"
 }
 
 function getLocalPreviewPresentation() {
@@ -1622,14 +1631,14 @@ async function shareRoomInvite() {
     state.room.isPrivate && state.room.pin
       ? `${state.room.title} - ${state.room.pin}`
       : state.room.title
-  const inviteLines = ["워키토키 방 초대", `방: ${inviteRoomLabel}`, `바로 입장: ${shareUrl}`]
+  const inviteLines = ["온라인 미팅 초대", `방: ${inviteRoomLabel}`, `바로 입장: ${shareUrl}`]
 
   const inviteText = inviteLines.join("\n")
 
   if (typeof navigator.share === "function") {
     try {
       await navigator.share({
-        title: "워키토키 방 초대",
+        title: "온라인 미팅 초대",
         text: inviteText,
         url: shareUrl
       })
@@ -2194,10 +2203,73 @@ async function releaseWakeLock() {
 
 const ICE_SERVERS_MAX_AGE_MS = 1000 * 60 * 60
 
+async function fetchRelayIceServers(pin) {
+  const response = await fetch("/api/ice/relay", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ pin })
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok || !Array.isArray(payload.iceServers)) {
+    const error = new Error(payload.message || "중계를 켜지 못했습니다.")
+    error.status = response.status
+    throw error
+  }
+  return payload.iceServers
+}
+
+function showRelayError(message) {
+  elements.relayError.textContent = message
+  elements.relayError.classList.toggle("hidden", !message)
+}
+
+// Turn on the TURN relay for this tab after a failed direct connection,
+// then restart ICE on every peer so they reconnect through the relay.
+async function enableRelay(pin) {
+  if (!/^\d{4}$/.test(pin)) {
+    showRelayError("숫자 4자리를 넣어 주세요.")
+    return
+  }
+
+  showRelayError("")
+  elements.enableRelayBtn.disabled = true
+  elements.enableRelayBtn.textContent = "확인 중..."
+
+  try {
+    const iceServers = await fetchRelayIceServers(pin)
+    state.relayPin = pin
+    state.iceServersFetchedAt = Date.now()
+    state.iceServersPromise = Promise.resolve(iceServers)
+
+    for (const [peerId, peer] of state.peers) {
+      if (!peer.connection) {
+        continue
+      }
+      peer.connection.setConfiguration({ iceServers })
+      peer.iceRestartAttempts = 0
+      void maybeCreateOffer(peerId, { iceRestart: true })
+    }
+
+    elements.relayPinInput.value = ""
+    hideConnectionHelpModal()
+    setStatus("중계를 켰습니다. 다시 연결하는 중입니다...")
+  } catch (error) {
+    showRelayError(error.status === 403 ? "비밀번호가 맞지 않습니다." : error.message)
+  } finally {
+    elements.enableRelayBtn.disabled = false
+    elements.enableRelayBtn.textContent = "중계 켜기"
+  }
+}
+
 async function getIceServers() {
   // TURN credentials expire, so refresh them on long-lived tabs.
   if (state.iceServersPromise && Date.now() - state.iceServersFetchedAt > ICE_SERVERS_MAX_AGE_MS) {
     state.iceServersPromise = null
+  }
+
+  if (!state.iceServersPromise && state.relayPin) {
+    state.iceServersFetchedAt = Date.now()
+    state.iceServersPromise = fetchRelayIceServers(state.relayPin).catch(() => DEFAULT_ICE_SERVERS)
   }
 
   if (!state.iceServersPromise) {

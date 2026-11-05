@@ -65,11 +65,12 @@ npm run dev
 npm run deploy
 ```
 
-다른 네트워크끼리 연결하려면 Cloudflare 대시보드 Realtime → TURN Server 에서 키를 만들고 secret 두 개를 넣습니다. 없으면 STUN 만 씁니다.
+기본은 TURN 없이 직접 연결만 씁니다. 연결이 안 되면 연결 가이드 창에서 중계 비밀번호 4자리를 넣어 Cloudflare TURN 중계를 켭니다. 키는 Cloudflare 대시보드 Realtime → TURN Server 에서 만들고 secret 세 개를 넣습니다.
 
 ```bash
 npx wrangler secret put TURN_KEY_ID
 npx wrangler secret put TURN_KEY_API_TOKEN
+npx wrangler secret put TURN_PIN
 ```
 
 ## 점검

@@ -1084,3 +1084,44 @@ body[data-view="call"]::before { display: none; }
 .call-view .primary-btn { background: #245bc2; border-radius: 5px; box-shadow: none; }
 .call-view .room-code-box { border-radius: 5px; background: #f2f4f6; }
 #resumeMediaBtn { position: absolute; top: calc(100% + 8px); right: 20px; padding: 10px 14px; color: #fff; background: #245bc2; border-radius: 5px; box-shadow: none; z-index: 8; }
+
+.relay-box {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(36, 91, 194, 0.18);
+  background: rgba(36, 91, 194, 0.05);
+}
+
+.relay-title {
+  margin: 0;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.relay-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.relay-row .field-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.relay-row .field-input:not(:placeholder-shown) {
+  letter-spacing: 0.3em;
+}
+
+.relay-row .primary-btn {
+  flex: none;
+  width: auto;
+  padding: 0 16px;
+}
+
+.relay-error {
+  margin: 8px 0 0;
+  color: #c0392b;
+  font-size: 0.9rem;
+}

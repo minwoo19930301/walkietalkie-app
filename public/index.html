@@ -7,7 +7,7 @@
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
     />
     <meta name="theme-color" content="#f5f4ef" />
-    <title>워키토키</title>
+    <title>온라인 무료 통화</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body data-view="setup">
@@ -18,10 +18,10 @@
             <div class="hero-grid">
               <img class="meeting-photo" src="/images/video-call.jpg" alt="노트북으로 화상회의에 참여하는 사람들" width="1600" height="1067" fetchpriority="high" />
               <div class="hero-copybox">
-                <p class="eyebrow">WALKIETALKIE / 워키토키</p>
-                <h1>링크로 주고받는<br />24시간 무료 화상통화</h1>
+                <p class="eyebrow">MEETING / 온라인 무료 통화</p>
+                <h1>링크 하나로 여는<br />무료 온라인 미팅</h1>
                 <p class="hero-copy">
-                  링크를 공유해서 최대 4명과 대화할 수 있어요.
+                  가입 없이 링크만 보내면 최대 8명이 함께 회의할 수 있어요.
                 </p>
               </div>
 
@@ -90,7 +90,7 @@
       <section class="view call-view hidden" id="callView" aria-hidden="true">
         <div class="call-stage" id="callStage">
           <header class="call-toolbar">
-            <span class="call-brand">워키토키</span>
+            <span class="call-brand">미팅</span>
             <button id="resumeMediaBtn" class="hidden" type="button">영상·소리 재생</button>
             <label>배치 <select id="layoutSelect" aria-label="참가자 화면 배치"><option value="auto">자동</option><option value="focus">상대방 크게</option><option value="horizontal">가로 나란히</option><option value="vertical">세로 나란히</option><option value="grid">격자</option></select></label>
             <label>영상 <select id="fitSelect" aria-label="영상 비율"><option value="contain">원본 비율</option><option value="cover">화면 채우기</option></select></label>
@@ -314,6 +314,25 @@
                 <li>VPN, 광고 차단, 사설 네트워크 기능을 잠시 꺼보고 재시도</li>
                 <li>앱을 닫았다가 다시 같은 링크로 입장</li>
               </ol>
+              <form class="relay-box" id="relayForm">
+                <p class="relay-title">서로 다른 네트워크라면 중계로 연결</p>
+                <p class="modal-copy">LTE처럼 직접 연결이 막힌 경우 중계 서버를 거쳐 연결합니다.</p>
+                <div class="relay-row">
+                  <input
+                    id="relayPinInput"
+                    class="field-input"
+                    type="password"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    maxlength="4"
+                    autocomplete="off"
+                    placeholder="비밀번호 4자리"
+                    aria-label="중계 비밀번호"
+                  />
+                  <button id="enableRelayBtn" class="primary-btn" type="submit">중계 켜기</button>
+                </div>
+                <p class="relay-error hidden" id="relayError"></p>
+              </form>
               <div class="modal-actions">
                 <button id="retryConnectionBtn" class="primary-btn" type="button">다시 시도</button>
                 <button id="dismissConnectionHelpBtn" class="secondary-btn" type="button">

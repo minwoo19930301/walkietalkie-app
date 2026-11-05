@@ -121,6 +121,7 @@ const state = {
     hasVideo: true
   },
   iceServersPromise: null,
+  iceServersFetchedAt: 0,
   socketPingTimer: null,
   signalingReconnectTimer: null,
   reconnectAttempts: 0,
@@ -2191,8 +2192,16 @@ async function releaseWakeLock() {
   }
 }
 
+const ICE_SERVERS_MAX_AGE_MS = 1000 * 60 * 60
+
 async function getIceServers() {
+  // TURN credentials expire, so refresh them on long-lived tabs.
+  if (state.iceServersPromise && Date.now() - state.iceServersFetchedAt > ICE_SERVERS_MAX_AGE_MS) {
+    state.iceServersPromise = null
+  }
+
   if (!state.iceServersPromise) {
+    state.iceServersFetchedAt = Date.now()
     state.iceServersPromise = fetch("/api/ice")
       .then(async (response) => {
         if (!response.ok) {

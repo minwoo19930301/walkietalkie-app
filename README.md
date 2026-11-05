@@ -1,8 +1,8 @@
 # 워키토키
 
-[![워키토키](public/images/video-call.jpg)](https://walkietalkie.kmw4564.workers.dev/)
+[![워키토키](public/images/video-call.jpg)](https://walkietalkie.ai-ing.org/)
 
-[![OPEN APP](https://img.shields.io/badge/OPEN_APP-294a38?style=for-the-badge)](https://walkietalkie.kmw4564.workers.dev/) [![SOURCE](https://img.shields.io/badge/SOURCE-444444?style=for-the-badge)](https://github.com/minwoo19930301/walkietalkie-app)
+[![OPEN APP](https://img.shields.io/badge/OPEN_APP-294a38?style=for-the-badge)](https://walkietalkie.ai-ing.org/) [![SOURCE](https://img.shields.io/badge/SOURCE-444444?style=for-the-badge)](https://github.com/minwoo19930301/walkietalkie-app)
 
 
 브라우저만으로 바로 들어와서 통화하는 WebRTC 기반 영상·음성 채팅 앱입니다.  
@@ -11,9 +11,7 @@
 ## 링크
 
 - GitHub 저장소: [https://github.com/minwoo19930301/walkietalkie-app](https://github.com/minwoo19930301/walkietalkie-app)
-- Live 주소: [https://walkietalkie.kmw4564.workers.dev/](https://walkietalkie.kmw4564.workers.dev/)
-- 이전 계정 주소: [https://walkietalkie.rlaalsdn456456.workers.dev/](https://walkietalkie.rlaalsdn456456.workers.dev/)
-- 초기 paircall 주소: [https://paircall.rlaalsdn456456.workers.dev/](https://paircall.rlaalsdn456456.workers.dev/)
+- Live 주소: [https://walkietalkie.ai-ing.org/](https://walkietalkie.ai-ing.org/)
 
 ## 현재 기능
 
@@ -32,7 +30,7 @@
 
 - 프런트엔드: 정적 HTML/CSS/JS
 - 서버: Cloudflare Worker + Durable Object
-- 미디어: WebRTC 브라우저 직접 전송(P2P Mesh)
+- 미디어: WebRTC 브라우저 직접 전송(P2P Mesh), 직접 연결이 안 되면 Cloudflare TURN 중계
 - 데이터 저장: Durable Object에 방 메타와 대기실 목록 최소 저장
 - 별도 DB/KV/R2: 사용 안 함
 
@@ -40,9 +38,9 @@
 
 기본 운영은 Workers Free 범위에서 거의 0원에 가깝게 운영 가능합니다.
 
-- `workers.dev` 기본 도메인 사용 시 추가 도메인 비용 없음
+- 기존 ai-ing.org 도메인의 하위 주소라 추가 도메인 비용 없음
 - 영상/음성은 서버 중계가 아니라 브라우저끼리 직접 전송
-- TURN 서버를 붙이지 않으면 릴레이 비용 없음
+- LTE처럼 직접 연결이 안 되는 경우만 Cloudflare TURN 이 중계합니다. 1GB 당 $0.05, 매달 1,000GB 무료
 
 ## 다자간(4~8명) 주의점
 
@@ -65,6 +63,13 @@ npm run dev
 
 ```bash
 npm run deploy
+```
+
+다른 네트워크끼리 연결하려면 Cloudflare 대시보드 Realtime → TURN Server 에서 키를 만들고 secret 두 개를 넣습니다. 없으면 STUN 만 씁니다.
+
+```bash
+npx wrangler secret put TURN_KEY_ID
+npx wrangler secret put TURN_KEY_API_TOKEN
 ```
 
 ## 점검

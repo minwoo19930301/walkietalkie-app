@@ -11,26 +11,64 @@ const LOBBY_ROOMS_KEY = "rooms"
 const ROOM_IDLE_TTL_MS = 1000 * 60 * 20
 const LOBBY_ACTIVE_TTL_MS = 1000 * 45
 
+const STUN_ICE_SERVERS = [
+  { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" }
+]
+
+// Cloudflare TURN relays media when two peers cannot connect directly
+// (for example a phone on LTE behind carrier NAT). Without TURN_KEY_ID and
+// TURN_KEY_API_TOKEN secrets the app falls back to STUN only.
+const TURN_CREDENTIAL_TTL_SECONDS = 60 * 60 * 4
+
+async function fetchTurnIceServers(env) {
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) {
+    return []
+  }
+
+  try {
+    const response = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ ttl: TURN_CREDENTIAL_TTL_SECONDS })
+      }
+    )
+    if (!response.ok) {
+      console.error("TURN credential request failed", response.status)
+      return []
+    }
+    const payload = await response.json()
+    const servers = Array.isArray(payload.iceServers) ? payload.iceServers : []
+    // Port 53 URLs time out in browsers, so drop them.
+    return servers
+      .map((server) => {
+        const urls = (Array.isArray(server.urls) ? server.urls : [server.urls]).filter(
+          (value) => typeof value === "string" && !/:53(\?|$)/.test(value)
+        )
+        return { ...server, urls }
+      })
+      .filter((server) => server.urls.length > 0 && server.username)
+  } catch (error) {
+    console.error("TURN credential request error", error)
+    return []
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
 
     if (url.pathname === "/api/ice") {
+      const turn = await fetchTurnIceServers(env)
       return json({
-        iceServers: [
-          {
-            urls: "stun:stun.cloudflare.com:3478"
-          },
-          {
-            urls: "stun:stun.l.google.com:19302"
-          },
-          {
-            urls: "stun:stun1.l.google.com:19302"
-          },
-          {
-            urls: "stun:stun2.l.google.com:19302"
-          }
-        ]
+        iceServers: [...turn, ...STUN_ICE_SERVERS]
       })
     }
 

@@ -1,8 +1,8 @@
 # 워키토키
 
-[![워키토키](public/images/video-call.jpg)](https://walkietalkie.ai-ing.org/)
+[![워키토키](public/images/video-call.jpg)](https://meeting.ai-ing.org/)
 
-[![OPEN APP](https://img.shields.io/badge/OPEN_APP-294a38?style=for-the-badge)](https://walkietalkie.ai-ing.org/) [![SOURCE](https://img.shields.io/badge/SOURCE-444444?style=for-the-badge)](https://github.com/minwoo19930301/walkietalkie-app)
+[![OPEN APP](https://img.shields.io/badge/OPEN_APP-294a38?style=for-the-badge)](https://meeting.ai-ing.org/) [![SOURCE](https://img.shields.io/badge/SOURCE-444444?style=for-the-badge)](https://github.com/minwoo19930301/walkietalkie-app)
 
 
 브라우저만으로 바로 들어와서 통화하는 WebRTC 기반 영상·음성 채팅 앱입니다.  
@@ -11,7 +11,7 @@
 ## 링크
 
 - GitHub 저장소: [https://github.com/minwoo19930301/walkietalkie-app](https://github.com/minwoo19930301/walkietalkie-app)
-- Live 주소: [https://walkietalkie.ai-ing.org/](https://walkietalkie.ai-ing.org/)
+- Live 주소: [https://meeting.ai-ing.org/](https://meeting.ai-ing.org/)
 
 ## 현재 기능
 

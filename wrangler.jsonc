@@ -5,7 +5,7 @@
   "compatibility_date": "2026-03-11",
   "routes": [
     {
-      "pattern": "walkietalkie.ai-ing.org",
+      "pattern": "meeting.ai-ing.org",
       "custom_domain": true
     }
   ],
